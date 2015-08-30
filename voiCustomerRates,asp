@@ -1,0 +1,3262 @@
+<%pgTitle="Customer Rates": sAllowed="1,2": sUPCpntAllowed="CDM"%>
+<!--#include file=../include/Header.asp-->
+<!--#include file="../include/voipCustomer1.asp"-->
+<!--#include file="multiuser2.asp"-->
+<!--#include file=../include/salespriv.asp-->
+
+<style type="text/css">
+<!--
+.wiztelFields {
+	width: 160px;
+}
+.wiztelInputFields {
+	font-size:10px;font-weight:normal;font-family:tahoma,sans-serif;width=100;
+}
+-->
+</style>
+<%
+Dim voipCust
+
+Dim tbltempRateLog, tblTempVoIPRateCustomer, tblTempVoIPRate
+
+Dim granins
+Dim ratetip
+
+
+granins=100 
+
+
+ratetip=0.00 ' 0.10
+%>
+<!--#include file=../include/maintenancelock.asp-->
+<%
+
+tbltempRateLog="tblTempRateLog"
+tblTempVoIPRateCustomer="tblTempVoIPRateCustomer"
+tblTempVoIPRate="tblTempVoIPRate"
+
+'Call ForceDeleteTempPool
+'
+Call MultiUserPurgePool
+
+'Call ForceLockPool(True)
+
+Set voipCust= New voipCustomer
+
+server.ScriptTimeout = 4000
+oConn.CommandTimeout = 4000
+sqlinherit=InheritUserDomainSqlType()
+sqlpriv=SalesPersonDomainSql()
+
+'debugerr "pause1"
+
+x1CustId = rqF("sX1CustId")
+
+If Request.QueryString("x1CustId")="" then
+Else
+x1CustId=Request.QueryString("x1CustId")
+End If
+
+voipUserId = rqF("sVoipUserId")
+voipUserName= rqF("sVoipUserName")
+Destination = rqF("sDestination")
+
+If Request.QueryString("mDestination")="" then
+Else
+Destination=Request.QueryString("mDestination")
+End if
+
+DestinationType = rqF("sDestinationType")
+
+If Request.QueryString("mDestinationType")="" then
+Else
+DestinationType=Request.QueryString("mDestinationType")
+End if
+
+DestinationMobileCarrier = rqF("sDestinationMobileCarrier")
+
+If Request.QueryString("mDestinationMobileCarrier")="" then
+Else
+DestinationMobileCarrier=Request.QueryString("mDestinationMobileCarrier")
+End if
+
+Description = rqF("sDescription")
+
+If Request.QueryString("mDescription")="" then
+Else
+Description=Request.QueryString("mDescription")
+End if
+
+StatusId = rqF("sStatusId")
+TierId = rqF("sTierId")
+'AddCustomerRateList = rqF("sAddCustomerRateList")
+AddVendorId = rqF("sAddVendorId")
+Intention = Trim(rqF("sIntention"))
+custRateResult ="" ' rqF("scustRateResult")
+KeepTempTable=rqF("sKeepTempTable")
+DialCodesSelect=rqf("DstPattern")
+LabelDialCode=rqf("LabelDialCode")
+If LabelDialCode="" Then
+LabelDialCode="DialCodes(All)" 
+End if
+
+vrcRetireDt=Trim(rqF("vrcRetireDt"))
+vvdid=rqf("vvdid")
+orgdest=rqf("orgdest")
+orgtype=rqf("orgtype")
+doretire=rqF("doretire")
+
+If tierid = "" Then tierid = 1 End If
+
+If intention = "" Then
+ mpartition="3"
+else
+mpartition=rqf("spartition")
+End If
+
+
+tbltempRateLog=MultiUserTempName(10,tbltempRateLog)
+
+tblTempVoIPRateCustomer=MultiUserTempName(10,tblTempVoIPRateCustomer)
+
+tblTempVoIPRate=MultiUserTempName(10,tblTempVoIPRate)
+
+If session("sidcancel") = "yes" Then
+
+session("sidcancel") = "" 
+
+If intention <> "" Then ' no need for this message if session new 
+
+s= "pricing model current session was canceled by another user or was expired\nnew session starts now..."
+	 
+response.write "<script>alert('"&s&"')</script>"
+    
+intention=""
+
+End If
+
+End If
+
+s1=getSessionId(tbltempRateLog)
+s2=getSessionId(tblTempVoIPRateCustomer)
+s3=getSessionId(tblTempVoIPRate)
+
+If s1=s2 And s2=s3 Then
+Else
+endpage "Customer Rates: system error  SessionIds are different "
+End if
+
+v=application("wizRSIDAllowGrpId")
+
+user=Request.Cookies("userUnixName")
+
+sql=" SELECT u.userUnixName FROM tblUserGroup AS g INNER JOIN "
+sql=sql& " tblUserGroupUsr AS gu ON g.grpId = gu.grpId INNER JOIN tblUser AS u ON "
+sql=sql& " gu.userId = u.userId WHERE (g.grpId = " & v & ") and u.userunixname = '" & user & "'"
+
+Set rs=oconn.execute(sql)
+
+bAllowRSID= Not rs.eof 
+
+rs.close
+
+bShowRSID=True
+
+If Not bAllowRSID Then
+
+v=application("wizRSIDShowGrpId") 
+
+sql=" SELECT u.userUnixName FROM tblUserGroup AS g INNER JOIN "
+sql=sql& " tblUserGroupUsr AS gu ON g.grpId = gu.grpId INNER JOIN tblUser AS u ON "
+sql=sql& " gu.userId = u.userId WHERE (g.grpId = " & v & ") and u.userunixname = '" & user & "'"
+
+Set rs=oconn.execute(sql)
+
+bShowRSID= Not rs.eof 
+rs.close
+
+End If
+Dim dtquery
+
+If IsNull(x1custid) Or x1custid="" Or X1custid = "-1" Then
+else
+	dtquery="select x1.rateincrnoticedays ,convert(varchar(20), dateadd(day,x1.rateincrnoticedays+1,getdate()),107)+'. 00:00:00'"
+	dtquery=dtquery&" as mytime from x1customer x1 where id="&x1custid
+
+	Set dtqRe=oConn.Execute(dtquery)
+	If Not dtqRe.eof then
+	If dtqRe("rateincrnoticedays")="0" Then
+	session("mytime")="Jun 11, 2008. 19:30:00"
+	else
+	session("mytime")=dtqRe("mytime")
+	End if
+	End if
+	dtqRe.close
+End If
+
+msgConf=""
+
+If  syslabuser="sergey" And  Destination <> "" And voipUserId <> "" Then 
+sql="exec IntegrityManager @transaction=3, @destfilter='"&Destination&"' , @voipuserid="&voipUserId
+wx(sql)
+Set rstest=oconn.execute(sql)
+html=""
+org="?"
+while Not rstest.eof 
+v=rstest("vendor")
+t1=rstest("vdsname") 
+t2=rstest("vdstype") 
+t3=rstest("vdsmobilecarrier")
+t4=rstest("vdsdescription")
+mindt=rstest("mincreated")
+maxdt=rstest("maxcreated")
+minuser=rstest("userby1")
+maxuser=rstest("userby2")
+
+If org <> v Then
+org=v
+html=html&"<tr>"
+html=html&"<td nowrap>"&t1&"</td>"
+html=html&"<td nowrap>"&t2&"</td>"
+html=html&"<td nowrap>"&t3&"</td>"
+html=html&"<td nowrap>"&t4&"</td>"
+
+html=html&"<td nowrap>"&v&"</td><td nowrap>"&mindt&"</td>"
+
+
+html=html&"<td nowrap>"&maxdt&"</td><td>"&minuser&"</td><td nowrap>"&maxuser&"</td></tr>"
+End if
+rstest.movenext
+wend
+
+rstest.close
+
+If html <> "" Then 
+msgConf="<table>"
+msgConf=msgConf&"<tr><th colspan=9 align=center><font color=red>List of Vendors With Overlapped Customer Effective Dates - please roll back transaction if it is not too late!</font></th></tr>"
+msgConf=msgConf&"<tr><th>vdsnamer</th><th>vdstype</th><th>carrier</th><th>description</th><th>vendor</th>"
+msgConf=msgConf&"<th colspan=2>created between</th><th colspan=2>userby between</th></tr>"
+msgConf=msgConf&html
+msgConf=msgConf&"</table>"
+End if
+
+End If
+
+select case Intention
+Case "lastdrop":
+sql=""
+v=rqf("lastdroplist")
+av=Split(v,"@")
+l=UBound(av)
+For i=1 To l
+v=av(i)
+au=Split(v,"|")
+sql=sql&"@@exec RatesManager @transaction=1,@simulate = 0 , @vtrid="&TierId
+sql=sql & "  ,@voipuserid=" & voipuserid
+sql=sql & "  ,@vvdid="&au(2)
+sql=sql & "  ,@vdsname='"&au(3)&"'"
+sql=sql & "  , @vdstype='"&au(4)&"'"
+
+sql=sql & "  @eff='"&au(1)&"'"
+Set au=Nothing
+
+Next
+
+redirerr sql
+
+Set av=Nothing
+av=Split(sql,"@@")
+
+l=UBound(av)
+sql=""
+For i=1 To l
+sql=av(i)
+oconn.execute(sql)
+Next
+
+
+Case "transcancel":
+
+sql="delete " & tbltempRateLog
+
+oconn.execute(sql)
+
+sql="delete " & tblTempVoIPRateCustomer
+
+oconn.execute(sql)
+
+user=Request.Cookies("userUnixName")
+
+sess=GetSessionID(tblTempVoIPRateCustomer)
+
+sql = " delete tblvoipratelock where userby = '" & user & "' and session=" & sess
+
+oconn.execute(sql)
+
+Case "saveall":
+
+MarkDeleteLock1 tblTempVoIPRateCustomer
+
+list=""
+
+grpCnt=rqf("sgrpCnt")
+
+For i=1 To grpCnt
+
+ndone=rqF("skipgrp") (i)
+
+v=rqF("skipgrp") (i)
+
+grpindex=rqf("grpindex") ( i)
+
+If grpindex <> "" Then
+
+If ndone <> "" Then 
+
+list=list & "," & grpindex
+
+End If
+
+End If
+
+Next
+
+If list <> "" Then
+
+list=Replace(list,",","",1,1)
+
+sql="delete " & tblTempVoIPRateCustomer & " where grp in ( " & list & ")"
+sql=sql & " or (custpend = 1) or (vendpend = 1) "
+
+oconn.execute(sql)
+
+End If
+
+sql="select top 1 vrcid from tblVoIPRateCustomer order by vrcid desc "
+
+Set rs=oconn.execute(sql)
+        
+     topvrcid=0
+
+     If Not rs.eof then
+       topvrcid=rs("vrcid")
+     End If
+        
+rs.close
+
+oconn.execute ("delete " & tblTempRateLog)
+
+sql= "insert into " & tblTempRateLog & " (qid,address, byte1,byte2,byte3,byte4,dt1) " 
+sql=sql & " select  10, 'custretired', rc.vrtid, 0, rc.voipuserid, rc.vrcid, " 
+sql=sql & " rc.vrcRetireDt from tblVoIPRateCustomer rc join " & tblTempVoIPRateCustomer & " x on rc.vrcid=x.vrcidretire "
+
+oconn.execute(sql)
+
+on error resume next 
+
+oConn.begintrans
+
+
+
+sql="update tblVoIPRateCustomer  Set vrcRetireDt=dateadd(ms, -2, X.vrcEffectDt) "
+sql=sql & " from " & tblTempVoIPRateCustomer & " X , "
+sql=sql & " tblVoIPRateCustomer rc "
+sql=sql & " where X.vrcidretire = rc.vrcid "
+sql=sql & " and rc.vrcid in ( select byte4 from " & tblTempRateLog & " where address = 'custretired' ) "
+
+oconn.execute(sql)
+
+s=""
+
+If Err.Number <> 0 Then
+
+s="SQL Server Error(b) while insert customer records, Transaction was not commited" 
+
+Err.Clear
+
+oConn.rollbacktrans
+
+
+End If
+
+If s = "" Then
+
+user=Request.Cookies("userUnixName")
+
+
+sqlx= "select top 1 vrcid from " & tblTempVoIPRateCustomer & " order by vrcid desc "	
+
+  Set rs=oconn.execute(sqlx)
+
+  maxvrcid=0
+
+  If Not rs.eof then
+   maxvrcid=rs("vrcid")
+  End if
+
+  rs.close
+
+  sqlx= "select top 1 vrcid from " & tblTempVoIPRateCustomer & " order by vrcid asc "	
+
+  Set rs=oconn.execute(sqlx)
+
+  minvrcid=0
+
+  If Not rs.eof then
+   minvrcid=rs("vrcid")
+  End if
+
+   rs.close
+
+ 
+   maxnum=(maxvrcid-minvrcid)+1
+
+   c=Int(maxnum/granins)
+
+
+   If (maxnum Mod granins) > 0 Then
+     c=c+1
+   End if
+
+   If maxnum < granins Then
+   
+   c = 1
+
+   End If
+   
+   j=minvrcid
+
+   
+For i=1 To c
+ 
+
+sql="insert into tblVoIPRateCustomer (vrtId, voipUserId, vrcPrice, vrcCreatedDt, " 
+sql= sql & " vrcEffectDt, vrcRetireDt, vrcCallCount, vtrId, vbsId, RSID, userby) "
+sql = sql & " select vrtId, voipUserId, vrcPrice, vrcCreatedDt, " 
+sql= sql & " vrcEffectDt, vrcRetireDt, vrcCallCount, vtrId, vbsId, RSID, '"&user&"'"
+sql = sql & " from " & tblTempVoIPRateCustomer & " X " 
+'sql = sql & " order by x.vrcId"
+sql= sql & " where x.vrcid >= " & j & " and x.vrcid < " & (j+granins) 
+sql = sql & " order by x.vrcid "	
+
+oConn.execute (sql)
+
+
+If Err.Number <> 0 Then
+
+s="SQL Server Error while insert customer records, Transaction was not commited" '& "<bR>" & sql & "<br>"&Err.Description
+
+s1=""
+
+If InStr(Err.Description,"Violation of UNIQUE KEY constraint 'IX_tblVoIPRateCustomer'")> 0 Then
+
+s1="<br>Please Try To Add One second to current Effective Date <br>(constraint conflict with retired dates was detected)"
+
+s=s& "<bR>" & s1
+
+End if
+	
+Err.Clear
+
+oConn.rollbacktrans
+
+
+End if
+
+
+
+If s <> "" Then
+
+  Exit For
+  
+End If
+
+j=j+granins
+
+Next
+
+End If ' s = ""
+
+
+If s = "" Then
+
+oConn.committrans
+
+On Error GoTo 0
+
+sql= "insert into " & tblTempRateLog & " (qid,address, byte1) select 10, 'newcustomer', vrcid from  tblVoIPRateCustomer where vrcid > " & topvrcid
+
+oConn.execute (sql)
+
+WriteLock tblTempRateLog, "newcustomer"
+
+Else
+
+redirerr (s)
+
+End If
+
+On Error GoTo 0
+
+MarkRollBack True, tbltempRateLog, tblTempVoIPRateCustomer, tblTempVoIPRate
+
+custRateResult = "YES"
+
+Case "addgrpsave":
+
+grp=CInt(rqf("sgrpCnt"))
+
+grpindex=rqf("grpindex") ( grp)
+
+nprice=rqF("snprice")
+nvbsid=rqF("snvbsid")
+nrtdt=Trim(rqF("snrtdt")) 
+nefdt=Trim(rqF("snefdt"))
+
+nefdt=Replace(nefdt,"."," ")
+nrtdt=Replace(nrtdt,"."," ")
+
+sqlrsid=""
+sqlcrsid=""
+If bAllowRSID then
+nrsid=rqF("snrsid")
+If nrsid <> "0" Then
+sqlrsid=" ,rsid="&nrsid
+sqlcrsid=" ,crsid="&nrsid
+Else
+sqlrsid=" ,rsid=NULL"
+sqlcrsid=" ,crsid=NULL"
+End if
+End If
+
+
+If InStr(nefdt,"--tonight--") > 0 Then
+nefdt=month(now)&"/"&day(now)&"/"&year(now)&" 23:59:59"
+End If
+
+If (nrtdt <> "--never--") And (nrtdt<>"") Then
+nrtdtst=  "'" & nrtdt & "'" 
+cnrtdtst=nrtdtst
+Else
+nrtdtst=  "NULL"
+cnrtdtst = "'12/31/5999'"
+End If
+
+
+
+sql="update " & tblTempVoIPRateCustomer & " Set vrcPrice = " & nprice & ",vrcEffectDt='" & nefdt & "'"
+sql=sql & ",vrcRetireDt=" & nrtdtst & ",vbsid=" & nvbsid & sqlrsid
+sql=sql & ",cvrcPrice= " & nprice & ",cvrcEffectDt='" & nefdt & "'"
+sql=sql & ",cvrcRetireDt=" & cnrtdtst & ",cvbsid=" & nvbsid & sqlcrsid
+sql=sql & " where grp=" & grpindex ' grp 
+
+'debugerr sql & "  :<br> " & x
+
+oConn.execute(sql)
+
+Case "skipallgrp":
+
+grpCnt=rqf("sallgrpCnt")
+
+For i=1 To grpCnt
+
+v=rqF("skipgrp") (i)
+
+grpindex=rqf("grpindex") ( i)
+
+If grpindex <> "" Then
+
+If v <> "" Then v = 1 Else v = 0 End If
+
+sql="update " & tblTempVoIPRateCustomer & " Set skip = " & v
+sql=sql & " where grp=" & grpindex 
+
+oConn.execute(sql)
+
+End If
+
+Next
+
+'Case "skipgrp":
+
+'grp=CInt(rqf("sallgrpCnt"))
+
+'grpindex=rqf("grpindex") ( grp)
+
+'v=rqF("skipgrp") (grp)
+
+'If v <> "" Then v = 1 Else v = 0 End If
+
+'sql="update " & tblTempVoIPRateCustomer & " Set skip = " & v
+'sql=sql & " where grp=" & grpindex 
+
+'oConn.execute(sql)
+
+
+Case "addallgrpsave":
+
+grpCnt=rqf("sallgrpCnt")
+
+For i=1 To grpCnt
+
+ndone=rqF("skipgrp") (i)
+
+If ndone = "" Then 
+ 
+nprice=rqf("newCustPrice") (i) ' rqF("snprice")
+nvbsid=rqf("newvbsId") (i) ' rqF("snvbsid")
+nrtdt=Trim(rqf("newGrpRetireDt") (i)) 
+nefdt=Trim(rqf("newGrpEffectDt") (i))
+
+sqlrsid=""
+sqlcrsid=""
+
+If bAllowRSID then
+nrsid=rqf("newrsId")(i)
+nrsidcolor=rqf("newrsIdColor") (i)
+If nrsid <> "0" Then
+sqlrsid=" ,rsid="&nrsid
+sqlcrsid=" ,crsid="&nrsid
+Else
+If nrsidcolor <> "yellow" then
+sqlrsid=" ,rsid=NULL"
+sqlcrsid=" ,crsid= NULL"
+End if
+End if
+End If
+
+nefdt=Replace(nefdt,"."," ")
+nrtdt=Replace(nrtdt,"."," ")
+
+If InStr(nefdt,"--tonight--") > 0 Then
+nefdt=month(now)&"/"&day(now)&"/"&year(now)&" 23:59:59"
+End If
+
+If (nrtdt <> "--never--") And (nrtdt<>"") Then
+nrtdtst=  "'" & nrtdt & "'"
+cnrtdtst = nrtdtst
+Else
+nrtdtst=  "NULL"
+cnrtdtst = "'12/31/5999'"
+End If
+
+grpindex=rqf("grpindex") ( i )
+
+sql="update " & tblTempVoIPRateCustomer & " Set vrcPrice = " & nprice & ",vrcEffectDt='" & nefdt & "'"
+sql=sql & ",vrcRetireDt=" & nrtdtst & ",vbsid=" & nvbsid & sqlrsid
+sql=sql & ",cvrcPrice= " & nprice & ",cvrcEffectDt='" & nefdt & "'"
+sql=sql & ",cvrcRetireDt=" & cnrtdtst & ",cvbsid=" & nvbsid & sqlcrsid
+sql=sql & " where grp=" & grpindex ' grp 
+
+
+oConn.execute(sql)
+
+End If ' ndone <> ""
+
+Next
+
+Case "doretiresupergrp":
+
+numgrp=rqf("numsgrp")
+
+
+s1=""
+
+numgrp=CInt(numgrp)
+
+oConn.execute("delete " & tbltempratelog)
+
+theMsg2=""
+
+For inumgrp = 1 To numgrp
+
+s=rqf("grpretirementdata") (inumgrp)
+s1=s1 & s & "<br>"
+
+
+asa=Split(s,"|")
+
+If UBound(asa) <> 4 Then
+
+redirerr "this is trap: please mail error text to sergey@wiztel.ca<br>index=" &  inumgrp & "<br>data=" & s & "<br>x1custid=" & x1custid
+
+End If
+
+vrted=asa(0)
+vrced=asa(1)
+
+vvdid=asa(2)
+
+orgdest=asa(3)
+orgtype=asa(4)
+
+
+ if TierId="" then TierId = 0 End if
+ if vvdId="" then vvdid = 0 End If
+ If voipuserid="" Then voipuserid=0 End If
+ 
+
+ if Not (TierId>0) then redirErr("Wrong vtrid") End if
+ if Not (vvdId>0) then redirErr("Wrong vvdid") End if
+ if Not (voipuserid>0) then redirErr("Wrong voipuserid") End if
+
+If IsNull(vrcRetireDt) Or vrcRetireDt = "" Then
+          vrcRetireDtSt = "NULL"
+Else
+          vrcRetireDt=Replace(vrcRetireDt,"."," ")
+          vrcRetireDtSt = "'" & vrcRetireDt & "'"
+End If
+
+
+		sqlb="select max(isnull(vrcEffectDt,'12/31/5999')) as maxeffectdtcustomer from tblVoipRateCustomer rc "
+        
+	    
+		sql="select  rc.vrcid, rc.vrtid, ds.vdsid, rc.voipuserid,  rc.vrcRetireDt from tblVoipRateCustomer rc " 
+        
+		q= "join tblVoipRate vr on vr.vrtid=rc.vrtid "
+		q=q& "join tblVoipDestination ds on ds.vdsid=vr.vdsid "
+		q=q & "where 1=1 and ds.vdsisactive=1 "
+
+        q=q &" and vr.vtrId=" &TierId
+		q=q &" and vr.vvdId=" &vvdId
+        q=q &" and rc.voipuserid=" & voipuserid
+		f0=""
+
+		if not ( isnull(vrcRetireDt) Or vrcRetireDt = "" )  then 
+
+		f0= " and isnull(rc.vrcRetireDt,'12/31/5999') > '" &vrcRetireDt &"'" ' only that are not already retired
+		
+		End If
+		
+		
+		If Len(Trim(orgdest)) > 1 Then
+		 
+		 f=  " and vdsName='"&orgdest&"'"
+
+		End If
+		
+
+		If Len(Trim(orgtype))>1 Then
+				f = f & " and vdsType= '"&orgtype&"' "
+		end If
+			
+			
+		If Len(Trim(DestinationMobileCarrier))>1 Then
+				f = f & " and vdsMobileCarrier='"&DestinationMobileCarrier&"' "
+		End If
+
+		If Len(Trim(Description))>1 Then
+				f = f & " and vdsDescription='"&Description&"' "
+		End If
+
+        If Len(Trim(DialCodesSelect)) > 0 Then
+            
+			DialCodesSelectSt="'" & Replace(DialCodesSelect,",","','") & "'"
+            f = f &  " and vdsDialCode in (" & DialCodesSelectSt & ")" 
+		End If
+
+	
+	    f2=" and vr.vdsid not in (select vr.vdsid from tblVoipRateCustomer rc join tblVoipRate vr on vr.vrtid=rc.vrtid " 
+		f2=f2 & " where getDate() < rc.vrcEffectDt " 
+		f2=f2 & " and vr.vvdid="&vvdid& " and rc.vtrid="&TierId& ") " ' exclude  pending
+	
+	    f3=" and isnull(rc.vrcRetireDt, getdate()) >= getdate() and rc.vrcEffectDt < getdate()   "    '   exclude not active
+
+        sqlb=sqlb & q & f & f2 & f3 & " group by rc.voipuserid "
+  
+		q= q & f & f0 &  f2 & f3
+
+        sql=sql & q                            ' main query
+		
+'redirerr "<br>"&vvdid& " " & orgdest & " " & orgtype & "<br>" & sql
+
+  	    
+		sqlpend="select ds.* from tblVoipRateCustomer rc join tblVoipRate vr on vr.vrtid=rc.vrtid"
+        sqlpend=sqlpend & " join tblVoipDestination ds on ds.vdsid=vr.vdsid where 1 = 1 and ds.vdsisactive=1  "
+       
+	    sqlpend =sqlpend &" and vr.vtrId=" &TierId
+		sqlpend =sqlpend &" and vr.vvdId=" &vvdId
+    
+	    f1=" and vr.vdsid  in (select vr.vdsid from tblVoipRateCustomer rc join tblVoipRate vr on vr.vrtid=rc.vrtid " 
+		f1=f1& "  where getDate() < rc.vrcEffectDt " 
+		f1=f1& " and vvdid="&vvdid& " and rc.vtrid="&TierId& ") " ' include pending only
+        
+		sqlpend = sqlpend & f &  f1
+	    sqlpend=  sqlpend & " order by vdsName, vdsType, vdsMobileCarrier, vdsDescription, vdsdialcode "
+	  
+	  
+   	    sqlcountall="select count(vr.vdsid) as mcount from tblVoipRateCustomer rc join tblVoipRate vr on vr.vrtid=rc.vrtid "
+        sqlcountall=sqlcountall & " join tblVoipDestination ds on ds.vdsid=vr.vdsid where 1 = 1 and ds.vdsisactive=1 "
+
+		sqlcountall=sqlcountall &" and vr.vtrId=" &TierId
+		sqlcountall=sqlcountall &" and vr.vvdId=" &vvdId
+     
+		sqlcountall=sqlcountall & f ' &  f3
+        
+
+
+ Set rs=oConn.execute(sqlcountall)
+   k=0
+   If Not rs.eof then
+   k=rs("mcount")
+   End if
+   rs.close
+
+	Set rs=oConn.execute(sqlpend)
+        
+		
+        c=0 
+		While Not rs.eof
+		c=c+1
+
+		If c < 30 then
+        theMsg2=theMsg2& "Dialcode: " & rs("vdsDialCode") & " " & rs("vdsName") & " " 
+		theMsg2=theMsg2 & rs("vdsType") & " " & rs("vdsMobileCarrier") & rs("vdsDescription") & "\n"
+		End If
+		if c = 30 Then
+		theMsg2=theMsg2 & " .....etc.....\n"
+		End if
+        rs.movenext 
+		wend
+        rs.close
+
+        If theMsg2 <> "" Then
+
+		If c <> k then
+
+        s =  c & " dialcodes out of " & k & " selected have pending status\nOperation will be canceled.\n\n" & theMsg2 
+
+        Else
+        
+		s= "All " & c & " dialcodes out of " & k & " selected have pending status\nOperation will be canceled.\n\n"  & TheMsg2 
+		
+		End If
+
+        Response.Write "<script>alert('"&s&"') </script>"
+
+        theMsg2=""
+		
+		doretirecontinue=""
+		    
+		Else ' theMsg2 <> ""
+
+		doretirecontinue="yes"
+
+        End If
+        
+        If doretirecontinue <> "" Then
+     
+		s=""
+
+        Set rs=oConn.execute(sqlb)
+
+      
+        If Not rs.eof Then
+        
+		maxeffectdt=rs("maxeffectdtcustomer")
+
+		Else
+		
+		s="All selected dialcodes  are  already retired before " & vrcRetireDt
+
+		End If
+		
+		rs.close
+
+       
+        If s <> "" Then 
+        
+        Response.Write "<script>alert('"&s&"') </script>"
+
+        Else
+        
+        
+        If (Not IsNull(vrcRetireDt)) and (vrcRetireDt <> "") Then
+        
+'	
+		If CDate(maxeffectdt) > CDate(vrcRetireDt) Then
+		
+		redirerr("Retire Date " & vrcRetireDt & " is less then maximum of Customer Effect Date " & maxeffectdt & ", please correct")
+
+        End If
+        
+		End If
+
+	
+		
+        Set rs=oConn.execute(sql)
+
+
+        While Not rs.eof
+
+		s=rs("vrcRetireDt")
+
+		If IsNull(s) Then
+		
+		s= "NULL"
+		Else
+		s= "'" & s & "'"
+		End if
+
+	    sql="insert into " & tblTempRateLog & " (address, byte1,byte2,byte3,byte4,dt1) values ('custretired', " 
+		sql=sql & rs("vrtid") & "," & rs("vdsid") & "," & rs("voipuserid") & "," & rs("vrcid") & "," & s & ")"
+                
+        oConn.execute(sql)
+		rs.movenext
+
+		Wend
+
+		rs.close
+    
+	If inamgrp = 1 Then ' once in a supergroup
+	
+	    lista=CheckLockAbs()
+        list=""
+
+        If lista = "" Then
+
+	    list=CheckLock(tblTempRateLog,"custretired")
+
+        End If
+        
+		s=""
+
+        If lista <>  ""  Then
+         s=s&"Billing subsystem is locked by another user:<br> " & lista
+        End If
+
+        If list <> "" Then
+          s=s& "Customer Rates are locked by another user:<br> " & list
+        End If
+
+        If s <> "" Then
+        	  redirerr(s)
+		End if
+
+    End If
+    
+         on error resume next 
+
+        oConn.begintrans
+
+        sql=" update tblVoIPRateCustomer  set vrcRetireDt = " & vrcRetireDtSt   
+   	    sql=sql & " where vrcId In (  select ttt.byte4  from " & tblTempRateLog & " ttt where ttt.address = 'custretired'  ) "
+				 
+		oConn.execute (sql)
+
+        If Err.Number <> 0 Then
+       		 
+             Err.Clear
+
+             oConn.rollbacktrans
+ 
+             redirerr ("SQL Server Error, Transaction were not commited")
+        
+		Else
+        
+            oConn.committrans
+
+            On Error GoTo 0
+            
+		    sql="update " & tblTempRateLog & " set qid=10"
+            oConn.execute (sql)
+
+            WriteLock tblTempRateLog, "custretired"
+    
+            MarkRollBack True, tbltempRateLog, tblTempVoIPRateCustomer, tblTempVoIPRate
+
+
+		End If
+        
+        On Error GoTo 0
+
+        End If   ' s <> ""  ' "All selected active dialcodes  are 
+        
+		End If ' doretirecontinue <> ""
+
+next
+		vvdid="" ' to restore ALL vendors selection list
+
+'next
+
+
+End select
+
+'----------------------------------------- End Action Section ----------------------------------------------------
+
+If Msgconf <> "" Then 
+Response.write MsgConf
+End if
+%>
+<form name="form1" method="post" action="">
+
+  <table  border="0" cellpadding="2" cellspacing="0" bordercolor="#FFFFFF" bgcolor="#FFFFFF" class="datatable">
+	<tr><th  style=font-weight:bold colspan=12>&nbsp;Viewing by..: &nbsp; &nbsp; <i><big style=font-weight:bold;font-size:14px;color:<%=colorMsg%>>Selling Price to CUSTOMER</big></i></th></tr>
+	<tr class="datacol1"> 
+	<td  nowrap>Partition:&nbsp;<select name="mpartition" onchange="return doSubmit('selectx','')"><option value="" <%if mpartition="" then%> selected <%end if%>>-All-</option>
+<%=voipCust.WritePartitionList3(mpartition,syslabuser)%>
+		</select> </td>
+
+      <td width="85">&nbsp;Customer: </td>
+      <td width="168"><select name="fX1CustId" id="fX1CustId" class="wiztelFields" onchange="return doSubmit('selectx','')">
+          <option value="0" >---- Select Customer ---- </option>
+		    <option value="-1" <%If  X1Custid = "-1" then%>selected<%End if%> >---- All ---- </option>
+		  <%=voipCust.WriteCustomerListAndPartition(X1CustId,mpartition)%>
+		
+        </select></td>
+	
+
+      <td width="119">&nbsp;User: </td>
+      <td width="149"><select name="fvoipUserId" id="fvoipUserId" class="wiztelFields" onchange="return doSubmit('select','')">
+
+			<%
+		'	debugerr "pausex2"
+			If X1Custid = "-1" Then
+			%>
+            <option value="-1" <%If  X1Custid = "-1" then%>selected<%End if%> >---- All ---- </option>
+			<%
+			else
+			v=voipCust.WriteUserListNew(X1CustId,VoipUserId)
+			If v > 0 Then  
+			VoipUserId= v  
+			VoipUserName=voipCust.GetVoipUserName(X1CustId,VoipUserId)
+			End If
+			End If
+	
+        	%>
+        </select></td>
+		</tr>
+		</table>
+  <table  border="0" cellpadding="2" cellspacing="0" bordercolor="#FFFFFF" bgcolor="#FFFFFF" class="datatable">
+
+    <tr class="datacol0"> 
+	
+	
+        <td  width="85">Destination: </td>
+      <td  width="168"><select name="fDestination" id="select2" class="wiztelFields" onchange="switchOption1(); return doSubmit('select','')">
+         <option value=''  <%If destination = "" then%>selected<%End if%>>-- Select Destination --</option>
+		 <option value='0'  <%If destination = "0" then%>selected<%End if%>>--All--</option>
+		 <%=voipCust.WriteDestinationList(Destination)%>
+        </select></td>
+      
+      <td  width="119">&nbsp;Destination Type:</td>
+      <td><select name="fDestinationType" id="select3" class="wiztelFields" onchange="switchOption1(); return doSubmit('select','')">
+          <option value="" selected>&nbsp;&nbsp;&nbsp;&nbsp;---- All ---- &nbsp;&nbsp;&nbsp;&nbsp;</option>
+		  <%=voipCust.WriteDestinationTypeList(Destination, DestinationType)%>
+        </select></td>
+      <td>Carrier:</td>
+      <td><select name="fDestinationMobileCarrier" id="select4" class="wiztelFields" onchange="switchOption1(); return doSubmit('select','')">
+          <option value="" selected>&nbsp;&nbsp;&nbsp;&nbsp;---- All ---- &nbsp;&nbsp;&nbsp;&nbsp;</option>
+
+		  <%=voipCust.WriteMobileCarrierListNoBlank(Destination, DestinationType, DestinationMobileCarrier)%>
+        </select></td>
+      <td>&nbsp;Breakout:</td>
+      <td><select name="fDescription" id="select1" class="wiztelFields" onchange="switchOption1(); return doSubmit('select','')">
+          <option value="" selected>&nbsp;&nbsp;&nbsp;&nbsp;---- All ---- &nbsp;&nbsp;&nbsp;&nbsp;</option>
+		  <%=voipCust.WriteDescriptionListNoBlank(Destination, DestinationType, Description)%>
+        </select></td>
+		</tr>
+</table>
+  <table  border="0" cellpadding="2" cellspacing="0" bordercolor="#FFFFFF" bgcolor="#FFFFFF" class="datatable">
+		
+		<tr>
+		<%
+zLink = siteRoot &"voip/voidialcodes.asp?destination="&Destination&"&dtype="& DestinationType
+zLink = zLink & "&carrier="&DestinationMobileCarrier & "&description="&Description
+zLink = zLink & "&doc=2"
+%>
+
+		<td  nowrap ><b><a href="/z.asp" onclick="return doDialCode(this,'<%=zlink%>')">
+		<input  class=datacol0 style="font-size:8pt;font-weight:normal;font-family:Arial;cursor:hand;color:black;text-decoration:underline;"
+         readonly  type=text name=LabelDialCode value="<%=LabelDialCode%>"> </a></b></td>
+
+      </tr>
+    <tr> 
+      <td valign="middle" bgcolor="#E1E1E1" class="datacol1">List of Tiers:</td>
+      <td rowspan="2" valign="top" colspan=18>
+		<%	Dim TierArray
+			'response.write voipUserId
+			
+			If (voipUserId = "" Or voipUserId = "0") Then
+			Else
+			   
+TierArray=voipCust.GetListOfTiersForCustomer1(X1CustId,VoipUserId,Destination, DestinationType, DestinationMobileCarrier,Description,DialCodesSelect)
+				If IsArray(TierArray) then
+					For i=0 To UBound(TierArray)
+						%>&nbsp;<a href="#" OnClick="return doSubmit('tierselect','<%=TierArray(i,0)%>')" <%If CStr(TierId) = 	CStr(TierArray(i,0)) Then%> style='color: red;background-color=FFFF00;' <%End If%>> <%=TierArray(i,1)%> &nbsp;(<%=TierArray(i,2)%>)</a>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<%				
+					Next
+
+			
+				End If
+
+			End If
+
+		%>
+	  </td>
+
+    </tr>
+	<tr>
+	<td></td>
+</tr>
+  </table>
+
+  <%
+  s1=voipCust.GetCustomerName(X1CustId)
+  s= " : " & voipUserName
+  %>
+  <br>
+  <table>
+  <tr>
+  <!--
+  	<td   align=center nowrap>&nbsp; <input class=databutton type=button value="Restore Last Transaction" onclick="return doSubmit('restore','')">&nbsp;</td>
+	-->
+	<%
+	zLink = siteRoot &"voip/treport2.asp?doc=2"
+	%>
+	<td  valign="bottom" align=center nowrap><a href="/z.asp" 	onclick="return acctWin(this,'<%=zLink%>')">Check Last Transaction</a></td>
+	</tr>
+  </table>
+  <%
+  If InStr(s,"Select User")>0  Or voipusername = "" Then s = "" End If
+
+  s2=""
+  If s = "" Then
+  s2=" <BR>Please Select User"
+  End if
+   If x1custid <> "-1" then
+  %>
+  <br>
+  <strong><font size="3" face="Verdana, Arial, Helvetica, sans-serif">List of 
+  Rates for Customer <em><font color="#990000"><%=s1%><%=s%></font></em><%=s2%></font></strong>&nbsp;&nbsp;&nbsp;&nbsp;
+   <br>
+  <br>
+  <%Else
+  s2=""
+  If destination = "0" Or destination = "" Then
+  s2="<BR>Please Select Destination"
+  End if
+  %>
+<br>
+  <strong><font size="3" face="Verdana, Arial, Helvetica, sans-serif">List of 
+  Rates<%=s2%></font></strong>&nbsp;&nbsp;&nbsp;&nbsp;
+   <br>
+  <br>
+  <%End if%>
+  <table border="0" cellspacing="0" cellpadding="2" id="idList1">
+    <tr class="datacol1"> 
+      <td width="72">&nbsp;Status: </td>
+      <td ><select name="fStatusId" id="fStatusId" onchange="return doSubmit('select','')">
+          <option value="1" <%If (StatusId = "1") then%>selected<%End if%>>Active</option>
+          <option value="2" <%If (StatusId = "2") then%>selected<%End if%>>Retired</option>
+          <option value="3" <%If (StatusId = "3") then%>selected<%End if%>>Pending</option>
+          <option value="0" <%If (StatusId = "0") then%>selected<%End if%>>All</option>
+        </select></td>
+
+        </tr>
+  </table>
+   <% 
+
+  Dim  sqlQuery
+  
+  If doretire <> "" And intention <> "retiresupergrp"  Then
+ 
+s1=rqf("orgdest")
+s2=rqf("orgtype")
+
+  If s1 = "" Then
+	DestinationString = ""
+  Else
+	DestinationString = " AND vdsName LIKE '"&s1&"%' "   
+  End If
+
+  If s2 = "" Then
+	DestinationTypeString = ""
+  Else
+	DestinationTypeString = " AND vdsType LIKE '"&s2&"%' "  
+  End If
+
+Else ' doretire
+
+  If Destination = "" Or Destination = "0" Then
+	DestinationString = ""
+  Else
+	DestinationString = " AND vdsName LIKE '"&Destination&"%' "   
+  End If
+
+  If DestinationType = "" Then
+	DestinationTypeString = ""
+  Else
+	DestinationTypeString = " AND vdsType LIKE '"&DestinationType&"%' "  
+  End If
+
+End If ' doretire
+
+
+  If DestinationMobileCarrier = "" Then
+	DestinationMobileCarrierString = ""
+  Else
+	DestinationMobileCarrierString = " AND isnull(ltrim(rtrim(vdsMobileCarrier)),'') = '"&trim(DestinationMobileCarrier)&"' "  
+  End If
+ 
+  If Description = "" Then
+	DescriptionString = ""
+  Else
+	DescriptionString = " AND isnull(ltrim(rtrim(vdsDescription)),'') = '"&trim(Description)&"' "  
+  End If
+  
+If DialCodesSelect = "" Then
+DialCodesSelectString=""
+else
+   s="'" & Replace(DialCodesSelect,",","','") & "'"
+   DialCodesSelectString= " and vdsDialCode in (" & s & ")" 
+End If
+
+  If TierId = "" Then
+	TierIdString = ""
+  Else
+	TierIdString = " AND rc.vtrId = '"&TierId&"' "  
+  End If
+
+retirementString = "  "	
+
+if StatusId>0 then 
+
+If StatusId = 1 Then ' active
+
+retirementString =  " and isnull(isnull(rc.vrcRetireDt,vr.vrtretiredt), getdate()) >= getdate() and isnull(rc.vrcEffectDt,vr.vrteffectdt) < getdate()   "
+
+End If
+
+If StatusId = 2 Then ' retired
+retirementString = " and  isnull(rc.vrcRetireDt,vr.vrtretireDt) < getdate() "
+
+End If
+
+If StatusId = 3 then ' pending
+
+retirementString = " and  getDate() < rc.vrcEffectDt  "
+
+End If
+
+End If ' iRetireStatus > 0
+
+If vvdid <> "" Then
+
+if intention <> "retiresupergrp"  Then
+
+vvdidstring= " and vr.vvdid=" & vvdid 
+
+Else
+
+vvdidlist=rqf("vvdidlist")
+vvdidstring= " and vr.vvdid in (" & vvdidlist &" ) "
+End If
+
+Else
+
+vvdidstring = ""
+
+End if
+
+acond=false
+If X1custid = "-1" And destination <> "0" Then
+  acond=true
+End if
+
+  If TierId = "" Then
+		sqlQuery = "Select * from vwVoIPRateCustomersOnly where X1CustId = 0"
+  Else
+
+
+      zsql="SELECT rc.*, ds.vdsDialCode, ds.vdsName, ds.vdsType, ds.vdsMobileCarrier, ds.vdsDescription, "
+      zsql=zsql & " cast(bs.vbsInitialMinSecsPerCall as varchar) +'/' +cast(bs.vbsIncrements as varchar) vbsName, "
+      zsql=zsql & " vr.vrtCost, vr.vrteffectdt, vr.vrtretiredt FROM tblVoIPRateCustomer rc  "		
+
+	  sqlQuery="select distinct uc.id, " 
+	  
+	  If acond Then
+
+	  sqlQuery=sqlQuery & " xc1.organization as customer,  uc.username as custusername, " 
+	  
+	  End If
+	  
+	  sqlQuery=sqlQuery & " count(*) as mcount, " 
+	  
+	  if statusid = 2 Then
+	  sqlQuery=sqlQuery & " rc.vrceffectdt, "
+      End If
+      
+      sqlQuery=sqlQuery & " max(vr.vrtCost) as maxcost, min(vr.vrtCost) as mincost, " 
+      sqlQuery=sqlQuery & " max(rc.vrcPrice) as maxprice, min(rc.vrcPrice) as minprice, " 
+      sqlquery=sqlquery & " max(rc.vbsid) as maxvbsid, min(rc.vbsid) as minvbsid, "
+      sqlquery=sqlquery & " max(isnull(rc.vrcRetireDt,'12/31/5999')) as maxrtd, "
+      sqlquery=sqlquery & " min(isnull(rc.vrcRetireDt,'12/31/5999')) as minrtd, "
+      sqlquery=sqlquery & " max(isnull(rc.vrcEffectDt,'12/31/5999')) as maxefd, "
+      sqlquery=sqlquery & " min(isnull(rc.vrcEffectDt,'12/31/5999')) as minefd, "
+      sqlquery=sqlquery & " max(isnull(vr.vrtEffectDt,'12/31/5999')) as maxefdvendor, "
+      sqlquery=sqlquery & " min(isnull(vr.vrtEffectDt,'12/31/5999')) as minefdvendor, "
+      sqlquery=sqlquery & " max(isnull(vr.vrtRetireDt,'12/31/5999')) as maxrtdvendor, "
+      sqlquery=sqlquery & " min(isnull(vr.vrtRetireDt,'12/31/5999')) as minrtdvendor, "
+
+	  sqlQuery=sqlQuery & "  ds.vdsname, ds.vdstype, '['+part.shortname+'].'+ xc.Organization as Organization , "
+	  sqlQuery=sqlQuery & " r.Username, r.X1Custid, r.voipuservendid from tblVoIPRateCustomer rc "
+      
+	  sqlQuery1=  "join  tblVoIPUserCustomer uc ON uc.Id = rc.voipUserId "
+	  sqlQuery1=sqlQuery1 & " join tblVoIPRate vr ON rc.vrtId = vr.vrtId "
+      sqlQuery1=sqlQuery1 & " join tblVoIPDestination ds ON ds.vdsId = vr.vdsid and ds.vdsisactive=1 "
+      sqlQuery1=sqlQuery1 & " join tblVoIPUserRoute r ON r.voipUserVendId = vr.vvdId "
+      sqlQuery1=sqlQuery1 & " join X1Customer xc ON xc.id = r.X1CustId "
+  sqlQuery1=sqlQuery1 & "  join  dbo.fnGetPartitionsByUser('"&syslabuser&"')  part on isnull(xc.partitionid,-1)=part.partitionid "
+
+'If mpartition <> "" Then
+ 
+'  sqlQuery1=sqlQuery1& " and part.partitionid="&mpartition
+'End If
+
+
+      If acond then
+      sqlQuery1=sqlQuery1 & " join X1Customer xc1 ON xc1.id = uc.X1CustId "
+ sqlQuery1=sqlQuery1 & "  join  dbo.fnGetPartitionsByUser('"&syslabuser&"')  part1 on isnull(xc1.partitionid,-1)=part1.partitionid "
+     sqlQuery2=  " where 1=1 and ds.vdsisactive=1 "
+
+      Else
+      
+	  If intention <> "retiresupergrp" then
+	  
+	  x1custidlist=x1custid
+
+	  Else
+
+	  x1custidlist=x1custid
+
+	  End If
+      
+      sqlQuery2=  " where uc.X1Custid = '"&X1CustId&"'"
+
+       End If
+       
+      If  acond  then
+      
+	  sqlQuery2=sqlQuery2 & retirementString
+      
+      else
+	  sqlQuery2=sqlQuery2 & retirementString&" AND voipUserId = '"&voipUserId&"' "
+      End If
+      
+	  sqlquery31=sqlQuery2
+
+	  sqlQuery2= sqlQuery2 & DestinationString&" "&DestinationTypeString 
+
+	  sqlQuery32= " " & DestinationMobileCarrierString&" "&DescriptionString&" "
+	  sqlQuery32=sqlQuery32 & DialCodesSelectString &" "
+
+      sqlQuery32=sqlQuery32 &TierIdString&" "
+      sqlQuery32=sqlQuery32 & vvdidstring & " "
+      
+	  sqlQuery2=sqlQuery2 & sqlQuery32   
+     
+	  sqlQuery=sqlQuery & sqlQuery1 & sqlquery2
+
+	  If statusid = 2 Then
+
+      sqlQuery=sqlQuery & " group by  uc.id, rc.vrceffectdt, ds.vdsname, ds.vdstype, xc.Organization, r.x1custid, r.UserName, r.voipuservendid,part.shortname " 
+
+	  If acond Then
+	  sqlQuery=sqlQuery & ", xc1.organization,uc.username "
+      End If
+
+	  sqlQuery=sqlQuery & " order by ds.vdsname, ds.vdstype, xc.Organization, r.UserName, rc.vrceffectdt desc"
+
+	  Else
+	  
+      sqlQuery=sqlQuery & " group by part.shortname, uc.id, ds.vdsname, ds.vdstype, xc.Organization, r.x1custid, r.UserName, r.voipuservendid " 
+
+	  If acond Then
+	  sqlQuery=sqlQuery & " , xc1.organization, uc.username "
+	  End If
+	  
+	  sqlQuery=sqlQuery & " order by " 
+	  
+	  	 
+      If acond Then
+
+	  sqlQuery=sqlQuery & " ds.vdsname, ds.vdstype ,  xc1.organization, uc.username , xc.Organization, r.UserName  "
+
+	  Else
+	  
+      sqlQuery=sqlQuery & " ds.vdsname, ds.vdstype , xc.Organization, r.UserName "
+
+	  End If
+	 
+       End if 
+
+  End If
+wx(sqlquery)
+'endpage sqlquery
+If True Then ' Not (intention = "addnewrate" Or  intention = "addgrpsave") Then
+If destination <> "" Then
+Set rs=oconn.execute(sqlquery)
+iRec=0
+If rs.eof Then
+%>
+</td></tr>
+<tr><td>
+<table align=left>
+	<tr><td class=datarow1  align=center><i>No rates matching selection</i></td></tr>	
+</table>
+</td></tr>
+<tr><td>
+<%
+else
+%>
+</td></tr>
+<tr><td>
+<table align=left>
+<tr>
+ <th width='5'>&nbsp;</th>
+<%
+     If acond Then
+ %>
+<th>Customer</th>
+  <%
+	 End if
+%>
+ <th>Vendor</th>
+ <th>Route</th>
+ <th>Max Cost</th>
+ <th>Max Price</th>
+ <th>Max Billing Inc</th>
+ <th style=text-align:center nowrap>Max Vend <br>Effect Date</th>
+ <th style=text-align:center nowrap>Max Vend<br> Retire Date</th>
+ <th style=text-align:center nowrap>Max Cust <br>Effect Date</th>
+ <th style=text-align:center nowrap>Max Cust <br>Retire Date</th>
+<% if intention <> "retiresupergrp" Then %>
+ <th style=text-align:center>Details</th>
+ <%
+ If Not acond then
+ If statusid = 1 then%>
+ <th style=text-align:center nowrap>
+ <input class=databutton type='button' value='Check All' 
+    onclick="return  doCheckretired('checkall');"
+title='Rate Retirement'>
+<input class=databutton type='button' value='Clear All' 
+    onclick="return  doCheckretired('clearall');"
+title='Rate Retirement'><bR>
+
+ <input class=databutton type='button' value='Retire Rates' 
+    onclick="return doSubmit1('groupload_add','')"
+title='Rate Retirement'>
+
+</td>
+</th>
+ <%
+ If syslabuser="sergeyzxz"  Then%>
+ <th style=text-align:center><input class=databutton type='button' value='Drop Last' 
+    onclick="return doSubmit1('lastdrop','')"
+title='Drop Last Rate Input'>
+</td>
+</th>
+<%
+ End if
+ End if
+ End if
+ End if%>
+</tr>
+<%
+orgc="?"
+igrp=0
+irec=0
+irecsgrp=0
+totaldc=0
+While Not rs.eof 
+irec=irec+1
+irecsgrp=irecsgrp+1
+orgdest=rs("VdsName")
+orgtype=rs("VdsType")
+orgefdt=""
+If statusid= 2 then
+orgefdt=rs("vrcEffectdt")
+End If
+
+orgn =orgdest & " " & orgtype
+if orgc <> orgn Then
+orgc=orgn
+iGrp=iGrp+1
+irec=1
+vcolspan=12
+If syslabuser="sergeyzxz" Then
+vcolspan=vcolspan+1
+End if
+%>
+<tr class="datacol0">
+<td colspan=<%=vcolspan%> style=text-align:left nowrap><b><%=orgc%>&nbsp;&nbsp;&nbsp;&nbsp;</b>
+</td>
+</tr>
+<%
+End If ' orgc <> org
+
+If acond Then
+
+customer=rs("customer")
+custusername=rs("custusername")
+
+End If
+
+org=rs("organization")
+username=rs("username")
+
+maxcost=rs("maxcost")
+mincost=rs("mincost")
+If maxcost <> mincost Then
+col="yellow"
+Else
+col=""
+End If
+
+maxprice=rs("maxprice")
+minprice=rs("minprice")
+If maxprice <> minprice Then
+col01="yellow"
+Else
+col01=""
+End If
+
+maxvbsid=rs("maxvbsid")
+minvbsid=rs("minvbsid")
+If maxvbsid <> minvbsid Then
+col1="yellow"
+Else
+col1=""
+End if
+mystr=" select cast(vbsInitialMinSecsPerCall as varchar) +'/' +cast(vbsIncrements as varchar) vbsName from tblVoIPBillingStructure"
+mystr=mystr & " where vbsid="& maxvbsid
+
+set myrs = oConn.execute(myStr) 
+
+maxvbsname=myrs("vbsname")
+     
+myrs.close
+
+maxrtd=rs("maxrtd")
+minrtd=rs("minrtd")
+If maxrtd <> minrtd Then
+col2="yellow"
+Else
+col2=""
+End If
+
+maxefd=rs("maxefd")
+minefd=rs("minefd")
+
+If maxefd <> minefd Then
+col3="yellow"
+Else
+col3=""
+End If
+
+maxefdvendor=rs("maxefdvendor")
+minefdvendor=rs("maxefdvendor")
+If maxefdvendor <> minefdvendor Then
+col30="yellow"
+Else
+col30=""
+End If
+
+maxrtdvendor=rs("maxrtdvendor")
+minrtdvendor=rs("maxrtdvendor")
+If maxrtdvendor <> minrtdvendor Then
+col20="yellow"
+Else
+col20=""
+End If
+%>
+<tr class=datarow<%=irec Mod 2%>>
+<td><%=irec%></td>
+<%
+k=rs("mcount")
+totaldc=totaldc+k
+If acond Then
+%>
+<td nowrap title="<%=custusername%>"><%=customer%></td>
+<%
+End if
+%>
+<td nowrap><%=org%> : <%=k%></td>
+</td>
+<%
+title=" unixid= " & rs("x1custid") & " voipuserid= " & rs("id") & " vvdid=" & rs("voipuservendid") 
+%>
+<td nowrap title="<%=title%>"><%=username%>
+</td>
+<td <%if col <> "" then%>style="background:<%=col%>"<%End if%> align=center>$<%=FormatNumberC6(maxcost,6)%></td>
+<td <%if col01 <> "" then%>style="background:<%=col01%>"<%End if%> align=center>$<%=FormatNumberC6(maxprice,6)%></td>
+<td <%If col1 <> "" then%>style="background:<%=col1%>"<%End if%> align=center><%=maxvbsname%></td>
+<%
+s=maxefdvendor
+If Year(s) = "5999"  Then
+s="--never--"
+Else
+s=displaydate(s,11)
+minval1=s
+End if
+%>
+<td <%If col30 <> "" then%>style="background:<%=col30%>"<%End if%> align=center nowrap><%=s%></td>
+<%
+s=maxrtdvendor
+If Year(s) = "5999"  Then
+s="--never--"
+Else
+s=displaydate(s,11)
+End if
+%>
+<td <%If col20 <> "" then%>style="background:<%=col20%>"<%End if%> align=center nowrap><%=s%></td>
+
+<%s=maxefd
+If Year(s) = "5999"  Then
+s="--never--"
+Else
+s=displaydate(s,11)
+minval2=s
+End if
+%>
+<td <%If col3 <> "" then%>style="background:<%=col3%>"<%End if%> align=center nowrap><%=s%></td>
+<%s=maxrtd
+If Year(s) = "5999"  Then
+s="--never--"
+Else
+s=displaydate(s,11)
+End if
+%>
+<td  <%if col2 <> "" then%>style="background:<%=col2%>"<%End if%>align=center nowrap><%=s%></td>
+
+<%
+
+   If orgdest = "" Then
+	orgdestString = ""
+  Else
+	orgdestString = " AND vdsName LIKE '"&orgdest&"%' "   
+  End If
+
+  If orgtype = "" Then
+	orgtypeString = ""
+  Else
+	orgtypeString = " AND vdsType LIKE '"&orgtype&"%' "  
+  End If
+
+  s=zsql & sqlquery1
+  s=s & " join  tblVoIPBillingStructure bs on bs.vbsId = rc.vbsid " 
+  s=s & sqlquery31 
+  s=s & orgdestString&" "&orgtypeString 
+  s=s & sqlquery32
+
+  If statusid = 2 Then
+  s=s & " and rc.vrceffectdt='" & orgefdt & "' " 
+  End If
+  
+  s=s & " and r.voipuservendid=" &rs("voipuservendid")
+
+  If acond Then
+   s=s & " and uc.username='" &custusername & "' " ' rs("voipuservendid")
+  
+  End If
+  
+  s=s & " order by ds.vdsname, ds.vdstype, ds.vdsmobilecarrier, ds.vdsdescription , ds.vdsdialcode"
+  s=Replace(s,"'",":quote:")
+  s=Replace(s,"+",":plus:")
+
+
+  zlink = siteRoot & "voip/showcustrates.asp?sql="& s 
+  
+  s= "&org="&org&"&user="&username
+
+  If acond Then
+  s=s&"&cust="&customer
+  End If
+  
+  s=Replace(s,"'",":quote:")
+  s=Replace(s,"+",":plus:")
+  
+  zlink=zlink & s
+d=""
+ if intention = "retiresupergrp" Then
+ d="style=display:none;"
+ End if
+ %>
+
+<td nowrap <%=d%>> <a href="/z.asp" onclick="return acctWin1(this,'<%=zLink%>',1150,650,50,10);">Show Details</a>
+</td>
+<%
+If Not acond then
+If statusid = 1 then
+v=rs("voipuservendid")
+s=minval1&"|"&minval2&"|"&v&"|"&orgdest&"|"&orgtype
+w=rqf("grpretirement"&irecsgrp)
+%>
+<td  align=center nowrap <%=d%>>
+<input type=checkbox class=datacheckboxn  id='idgrpretirement<%=irecsgrp%>'
+name='grpretirement<%=irecsgrp%>'  value='1' <%If w <> "" then%> checked <%End if%>>
+<input type=hidden name='grpretirementdata<%=irecsgrp%>' value="<%=s%>">
+<input type=hidden name='grpretirementvendor<%=irecsgrp%>' value="<%=v%>">
+			
+</td>
+<%
+If syslabuser="sergeyzzx"  Then
+%>
+<td align=center nowrap ><input type=checkbox class=datacheckboxn  
+name='grplastdrop<%=irecsgrp%>'  value='<%=irecsgrp%>'>
+<input type=hidden name='grpmaxefd<%=irecsgrp%>' value="<%=maxefd%>">
+</td>
+<%
+End if
+End if
+End if%>
+</tr>
+<%
+rs.movenext
+Wend
+rs.close
+%>
+<tr class="datacol0">
+<td colspan=<%=vcolspan%> style=text-align:left nowrap title="total number of dialcodes: <%=totaldc%>">&nbsp;</td>
+</tr>
+</table>
+</tr>
+<% 
+End If ' If destination <> "" then
+%>
+</td></tr>
+<tr><td>
+<table id=trEdit1 >
+	<tr>
+	<th>Tier</th>
+    <th>Vendor Effect Date</th>
+    <th>Customer Effect Date</th>
+    <th>New Retire Date</th>
+    <th></th>
+
+	</tr>
+	<tr>
+		<td style=text-align:center nowrap><input class=datatext <%=styleReadOnly%> style=text-align:center type=text size=2 name=vtrId 
+		value="<%=TierId%>" title='Tier'>&nbsp;</td>
+		
+					<input type=hidden name=vrtMarkup value=''>
+					<input type=hidden name=vrtRate value=''>
+					<%
+
+					s1=rqF("min1Value")
+                    s2=rqF("min2Value")
+					
+					's3="--tonight--"
+					
+					tc=   Dateadd("n", 30,  Now() ) 
+
+                    If Minute(tc) <= 30 Then
+                    s3=month(tc)&"/"&day(tc)&"/"&year(tc)&" " & Hour(tc) & ":00"
+                    Else
+                    s3=month(tc)&"/"&day(tc)&"/"&year(tc)&" " & Hour(tc) & ":30"
+                    End If
+                    
+					s3=displaydate(s3,11)
+					
+				
+					If s1 <> "" And s2 <> "" then
+                    
+					d1=0
+					d2=0
+					If s1 <> "--never--" Then
+					d1=Replace(s1,"."," ")
+					d1=CDate(d1)
+                    End If
+                    If s2 <> "--never--" Then
+					d2=Replace(s2,"."," ")
+                    d2=CDate(d2)
+                    End If
+                    
+					If d1 > d2 Then
+					d2=d1
+					End If
+
+					d2=DateAdd("d",1,d2)
+					s3min=displaydate(d2,11)
+					
+                    End If
+                    
+					If s2="" And s1 <> "--never--" And s1 <> "" Then
+					d1=Replace(s1,"."," ")
+                    d1=CDate(d1)
+					d1=DateAdd("d",1,d1)
+					s3min=displaydate(d1,11)
+					
+					End If
+					
+					t="Retire Date must be greater then " & s3min
+
+                   
+					%>
+		<td style=text-align:center nowrap><input class=datatext <%=styleReadOnly%> style=text-align:center type=text name=min1Value value="<%=s1%>" size=20 title='Vendor Effect Date'>&nbsp;</td>
+		<td style=text-align:center nowrap><input class=datatext <%=styleReadOnly%> style=text-align:center type=text name=min2Value value="<%=s2%>" size=20 title='Customer Effect Date'>&nbsp;</td>
+		<td nowrap><input class=datatext type=text name=vrcRetireDt value="<%=s3%>" size=20 maxlength=25 title='Retire Date: e.g Apr 07, 2008. 23:59'></td>
+		<td style=text-align:center colspan=5 nowrap>&nbsp;
+			<input class=databutton style=background:#f2f9fc;color:#000044 type=button name=btnSubmit 
+			value='Retire' title='Retire Group>' 
+			onclick="return doSubmit1('submit',' ')">&nbsp;
+		<input class=databutton style=background:#daf9f4;color:#004400 type=button name=btnCancel value=cancel
+		title=Cancel 
+		onclick="return doSubmit1('cancel',''); visibility('trEdit1',bShowEdit1=0); return false">
+
+			<input type=hidden name=vbsId value=''>
+            <input type=hidden name=vrtCost value=''>
+			<input type=hidden name=vrcId value=''>
+			<input type=hidden name=vdgId value=''>
+			<input type=hidden name=vvdId value=''>
+			<input type=hidden name=action1x value=''>
+			<input type=hidden name=vrtDestination value=''>
+			<input type=hidden name=vrtDescription value=''>
+            <input type=hidden name=vrtDialCode value=''>
+			<input type=hidden name=vrtType value=''>
+			<input type=hidden name=vrtCarrier value=''>
+			<input type=hidden name=voipUserId value='<%=voipUserId%>'>
+			<input type=hidden name=DstPattern id=idDstPattern value="<%=DialCodesSelect%>">
+			<input type=hidden name=LabelDialCode value="<%=LabelDialCode%>">
+		   
+		</td>
+	</tr>
+</table>
+
+</td></tr>
+<tr><td>
+<%End If
+ End If '  If intention = "addnewrate" Or  intention = "addgrpsave" Then
+%>
+  <br>
+  <br>
+
+<%If voipuserid <> "0" And Tierid <>"" And intention <> "retiresupergrp" And destination <> ""  And voipusername <> "" And x1custid <> "-1" then
+%>
+
+  <strong><font size="3" face="Verdana, Arial, Helvetica, sans-serif">Add New 
+  Rates for Customer <em><font color="#990000"><%=voipCust.GetCustomerName(X1CustId)%>&nbsp;:&nbsp;<%=voipUserName%></font></em></font></strong>
+
+<%If destination <> "0" and X1Custid <> "-1" then%>
+
+  <br>
+    <strong><font size="3" face="Verdana, Arial, Helvetica, sans-serif">For Destination<em><font color="black">
+  <%=Destination%>&nbsp;<%=DestinationType%>&nbsp;<%=DestinationMobileCarrier%>&nbsp;<%=Description%>&nbsp;<%=LabelDialCode%></font></em>
+  </font></strong>
+
+ 		 <br><br>
+		 <%
+		 If AddVendorId = "" Then
+         AddVendorId=0
+		 End if
+		 %>
+  <table  border="0" cellspacing="0" cellpadding="2">
+	<tr style="height:25;" align='center' class='datacol1'><td colspan='18'> Vendor: &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;
+    <select name='fAddVendorId' id='fAddVendorId' class='wiztelFields' style='width: 280;' onchange="return doSubmit('select','')">
+    <option value='0' selected>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;---- All ---- </option>     
+    <% = voipCust.WriteVendorListsyslabuser(syslabuser,AddVendorId, Destination, DestinationType ,DestinationMobileCarrier , Description, DialCodesSelect ) %>    </select>     &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <input name='fAddNewRate' class=databutton type='button' id='fAddNewRate' value='Add New Rates'  OnClick="return doSubmit('addnewrate','')">        
+	</td></tr>
+</table>
+<%else%>
+  <br>
+    <strong><font size="3" face="Verdana, Arial, Helvetica, sans-serif">Please Select Destination<em><font color="#990000">
+<%
+End if
+End If
+If intention = "addnewrate" Or  intention = "addgrpsave" Or intention="addallgrpsave" Or intention="skipallgrp" Then
+%>
+<br>
+ <%
+ 
+
+   DescriptionString = ""
+   DestinationMobileCarrierString = ""
+   DestinationTypeString=""
+   DestinationString=""
+   DialCodesSelectString=""
+
+	
+	If Not(Destination = "") Then
+		DestinationString = " , @Destination='"&Destination&"'"
+	End If
+	If Not(DestinationType = "") Then
+		DestinationTypeString = " , @DestinationType='"&DestinationType&"' "
+	End If
+	If Not(DestinationMobileCarrier = "") Then
+		DestinationMobileCarrierString = " , @DestinationMobileCarrier='"&trim(DestinationMobileCarrier)&"' "
+	End If
+
+	
+	If Not(Description = "") Then
+		DescriptionString = " , @Description='"&trim(Description)&"' "
+	End If
+
+  
+If Not( DialCodesSelect = "") Then
+   s="''" & Replace(DialCodesSelect,",","'',''") & "''"
+   DialCodesSelectString= " , @DialCodesSelect= " & "'" & s &  "'"
+End If
+
+filt=DestinationString&DestinationTypeString&DestinationMobileCarrierString&DescriptionString&DialCodesSelectString
+
+sql= "Exec spViewCustomerDestHeaderVendorRates2 @voipUserId='"&voipUserId&"', @TierId='"&TierId&"' "
+
+If AddVendorId > 0 Then
+        sql=sql & ", @vrUserId = '"&AddVendorId&"' "
+End if
+
+sql=sql &  filt
+  
+  If KeepTempTable = "" Then
+  Set thers=oConn.execute(sql)
+
+  ' DeleteLock1 tblTempVoIPRateCustomer - bug!
+
+  user=Request.Cookies("userUnixName")
+
+sess=GetSessionID(tblTempVoIPRateCustomer)
+
+sqla = " delete tblvoipratelock where userby = '" & user & "' and session=" & sess
+
+oconn.execute(sqla)
+
+  oconn.execute ("delete " & tblTempVoIPRateCustomer)
+  
+  group=100
+  orgc="?"
+
+  While Not thers.eof
+  
+  group=group+1
+  voipuservendid=thers("vvdid")
+
+  orgdest=theRs("vdsname")
+orgtype=theRs("vdsType")
+
+orgn=orgdest & "  " & orgtype
+
+if orgc <> orgn then
+   
+   orgc=orgn
+
+   DescriptionString = ""
+   DestinationMobileCarrierString = ""
+   DestinationTypeString=""
+   DestinationString=""
+   DialCodesSelectString=""
+
+	
+	If Not(orgdest = "") Then
+		DestinationString = " , @Destination='"&orgdest&"'"
+	End If
+	
+	If Not(orgtype = "") Then
+		DestinationTypeString = " , @DestinationType='"&orgtype&"' "
+	End If
+
+	If Not(Trim(DestinationMobileCarrier) = "") Then
+		DestinationMobileCarrierString = " , @DestinationMobileCarrier='"&trim(DestinationMobileCarrier)&"' "
+	End If
+
+	
+
+	If Not(Trim(Description) = "") Then
+		DescriptionString = " , @Description='"&trim(Description)&"' "
+	End If
+
+  
+If Not( DialCodesSelect = "") Then
+   s="''" & Replace(DialCodesSelect,",","'',''") & "''"
+   DialCodesSelectString= " , @DialCodesSelect= " & "'" & s &  "'"
+End If
+
+filt=DestinationString&DestinationTypeString&DestinationMobileCarrierString&DescriptionString&DialCodesSelectString
+
+
+ End if
+
+
+  sqla="exec spViewCustomerVendorRatesTmpPrepareProcess2 "
+  sqla= sqla & " @tblTempVoIPRateCustomer = '" & tblTempVoIPRateCustomer & "',"
+  sqla= sqla & " @group = " & group & ","
+  sqla= sqla & " @TierId = " & TierId & ","
+  sqla= sqla & " @voipUserid = " & voipuserid & ","
+  sqla= sqla & " @vrUserId = " & voipuservendid 
+  sqla = sqla & " ,@syslabuser='"&syslabuser&"' "
+  sqla= sqla & filt
+  oconn.execute(sqla)
+
+  thers.movenext
+
+  Wend
+
+  thers.close
+
+  lista=CheckLockAbs()
+
+  list=""
+  
+  If lista = "" Then
+  
+  list=CheckLock1(tblTempVoIPRateCustomer)
+  
+  End If
+  
+  s=""
+
+  If lista <>  ""  Then
+  s=s&"Billing subsystem is locked by another user:<br> " & lista
+  End If
+
+
+  If list <> "" Then
+    
+	s=s&"Customer Rates are locked by another user:<br>" & list
+  
+  End If
+  
+  If s <> "" Then
+        redirerr(s)
+  End If
+  
+  WriteLock1  tblTempVoIPRateCustomer 
+
+  End If
+  
+  Set thers=oConn.execute(sql)
+
+%>
+ <table>
+			   <tr height=30>
+			   <th width=350></th>
+   			   <th style=text-align:center nowrap>Check<br>New<br>Price</th>
+			   <th></th>
+			   <th style=text-align:center nowrap>New<br>Price</th>
+			   <th></th>
+			   <th style=text-align:center nowrap>New<br>B.I.</th> 
+               <th></th>
+ 			   	<th style=text-align:center nowrap>New Cust<br>Effect Date</th> 
+               <th></th>
+			   	<th style=text-align:center nowrap>New Cust<br>Retire Date</th> 
+               <th></th>
+			   </tr>
+			   <tr>
+			   <td width=350></td>
+                 <td ><select name='CheckNewPrice2copy'>
+				 <%v=rqf("CheckNewPrice2copy")%>
+				 <option value="0" <%If v = "0" then%>selected<%End if%>>Deny</option>
+                 <option value="1" <%If v = "1" then%>selected<%End if%>>Allow</option>
+				 </select>
+                 </td>
+				 <td><input class=databutton type=button name=buttoncopyall value="Copy To All" 
+                onclick="return doCopy2All('0')">
+                </td>
+               
+			    <td ><input type='text' name='newCustPrice2copy' style="font-size:11;text-align:center" size=5  value="<%=rqf("newCustPrice2copy")%>"/></td>
+				 <td><input class=databutton type=button name=buttoncopyall value="Copy To All" 
+                onclick="return doCopy2All('1')">
+                </td>
+			    <td >
+				<select class=dataselect name='newBi2copy'>
+<option value='0'>-- All --</option><%
+set rstest=oConn.execute("select vbsId, cast(vbsInitialMinSecsPerCall as varchar) +'/' +cast(vbsIncrements as varchar) vbsName from tblVoIPBillingStructure")
+'i=1
+v=rqf("newBi2copy")
+If v = "" Then v= 0 End If
+v=CInt(v)
+while not rstest.eof
+u=rstest("vbsid")
+%>
+<option  value="<%=u%>" <%If v=u then%>selected<%End if%>> 
+<%=shortStr(rstest("vbsName"),12)%></option>
+<%rstest.movenext
+Wend
+rstest.close%>
+</select>
+	</td>
+				 <td><input class=databutton type=button name=buttoncopyall value="Copy To All" 
+                onclick="return doCopy2All('2')">
+                </td>
+			    <td ><input type='text' name='newEffectDt2copy' style="font-size:11;text-align:center" size=8  value="<%=rqf("newEffectDt2copy")%>"/></td>
+				 <td><input class=databutton type=button name=buttoncopyall value="Copy To All" 
+                onclick="return doCopy2All('4')">
+                </td>
+
+
+			    <td ><input type='text' name='newRetireDt2copy' style="font-size:11;text-align:center" size=8  value="<%=rqf("newRetireDt2copy")%>"/></td>
+				 <td><input class=databutton type=button name=buttoncopyall value="Copy To All" 
+                onclick="return doCopy2All('3')">
+                </td>
+
+ 			   </tr>
+			   </table>
+			
+  <table  border="0" cellspacing="0" cellpadding="2">
+
+  <%
+
+NoMatchingVendors=false
+
+If thers.eof Then
+
+NoMatchingVendors=true
+
+%>
+<tr><td class=datarow1 colspan=10 align=center><i>No vendors matching selection or Route Retire Dates < CurrentDate + 7</i></td></tr>	
+<%
+End If
+
+thers.close
+
+%>
+ </table>
+
+<%
+if not NoMatchingVendors then
+
+sql="select ds.vdsname, ds.vdstype, xc.organization, ur.username, vr.vvdid, count(*) as mcount, " 
+sql = sql & " sum(cast(rc.vrtExists as int)) as cexists, sum(cast(rc.custpend as int)) as ccustpend, sum(cast(rc.vendpend as int)) as cvendpend, "
+sql = sql & " max(vrtCost) as maxcost, min(vrtCost) as mincost, "
+sql = sql & " max(rc.hvrcPrice) as maxprice, min(rc.hvrcPrice) as minprice, "
+sql = sql & " max(rc.hvbsid) as maxvbsid, min(rc.hvbsid) as minvbsid, "
+sql = sql & " max(rc.hvrcEffectdt) as maxvrceffectdt, min(rc.hvrcEffectdt) as minvrceffectdt, "
+sql = sql & " max(vr.vrtEffectdt) as maxvrteffectdt, min(vr.vrtEffectdt) as minvrteffectdt, "
+sql = sql & " max(isnull(rc.hvrcRetiredt,'12/31/5999')) as maxvrcretiredt, "
+sql=  sql & " min(isnull(rc.hvrcRetiredt,'12/31/5999')) as minvrcretiredt, "
+sql = sql & " max(isnull(vr.vrtRetiredt,'12/31/5999')) as maxvrtretiredt, "
+sql = sql & " min(isnull(vr.vrtRetiredt,'12/31/5999')) as minvrtretiredt, "
+sql = sql & " max(rc.grp) as grpindex, "
+sql = sql & " max(rc.cvrcprice) as cvrcprice, "
+sql = sql & " max(rc.cvbsid) as cvbsid, "
+sql = sql & " max(rc.cvrcEffectDt) as cvrcEffectDt, "
+sql = sql & " max(rc.cvrcRetireDt) as cvrcRetireDt, "
+sql = sql & " max(isnull(rc.rsid,0)) as maxrsid, "
+sql = sql & " min(isnull(rc.rsid,0)) as minrsid, "
+sql = sql & " max(rc.crsid) as crsid, "
+sql = sql & " max(cast(isnull(rc.skip,0) as int)) as skip "
+sql=sql & " from " & tblTempVoIPRateCustomer & " rc "
+sql=sql & " join tblVoipRate vr on vr.vrtid=rc.vrtid "
+sql=sql & " join tblVoipUserRoute ur on ur.voipuservendid=vr.vvdid "
+sql=sql & " join x1customer xc on xc.id=ur.x1custid "
+sql=sql & " join tblvoipdestination ds on ds.vdsid=vr.vdsid "
+sql=sql & " where ds.vdsisactive=1 "
+sql=sql & " group by ds.vdsname, ds.vdstype, xc.organization, ur.username , vr.vvdid, rc.skip, rc.grp "
+sql=sql & " , rc.cvrcprice , rc.cvbsid, rc.cvrcEffectDt, rc.cvrcRetireDt"
+sql=sql & " order by isnull(rc.skip,0), ds.vdsname, ds.vdstype, xc.organization, ur.username , vr.vvdid "
+
+
+
+%>
+</td></tr>
+<tr><td>
+ <table  border="0" cellspacing="0" cellpadding="2">
+<tr >
+<th>&nbsp;</th>
+<th style=text-align:center nowrap>Skip<br>Group</th> 
+<th style=text-align:center nowrap>Vendor</th>
+<th style=text-align:center nowrap>Max<br>Cost</th>
+<th style=text-align:center nowrap>Max<br>B.I.</th>
+<th style=text-align:center nowrap>Check<br>New<br>Price</th>
+<th style=text-align:center nowrap>New<br>Price</th>
+<th style=text-align:center nowrap>New<br>B.I.</th> 
+<th style=text-align:center nowrap>New Cust <br>Effect Date</th> 
+<th style=text-align:center nowrap>New Cust <br>Retire Date</th> 
+<th style=text-align:center nowrap>New Cust <br>RSID</th> 
+<th style=text-align:center nowrap>Group<br>Operation</th> 
+<th style=text-align:center nowrap>Edit<br>Details</th> 
+<th style=text-align:center nowrap>Max<br>Price</th>
+<th style=text-align:center nowrap >Max Vend<br>Effect Date</th>
+<th style=text-align:center nowrap >Max Vend <br>Retire Date</th>
+<th style=text-align:center nowrap>Max Cust <br>Effect Date</th>
+<th style=text-align:center nowrap>Max Cust <br>Retire Date</th>
+
+</tr>
+<%
+irec=0
+iact=0
+orgc="?"
+skipc=0
+
+Set thers=oconn.execute(sql)
+'debugerr sql
+While Not thers.eof
+irec=irec+1
+c=thers("cexists")
+c1=thers("mcount") - c
+cpcust=thers("ccustpend")
+cpvend=thers("cvendpend")
+org=thers("organization")
+username=thers("username")
+
+	  maxcost=theRs("maxcost")
+	  maxprice=theRs("maxprice")
+      mincost=theRs("mincost")
+	  minprice=theRs("minprice")
+	  	 
+	  minvbsid=theRs("minvbsid")
+	  maxvbsid=theRs("maxvbsid")
+
+skip=theRs("skip")
+
+grpindex=theRs("grpindex")
+
+mystr=" select cast(vbsInitialMinSecsPerCall as varchar) +'/' +cast(vbsIncrements as varchar) vbsName from tblVoIPBillingStructure"
+mystr=mystr & " where vbsid="& maxvbsid
+
+	 set myrs = oConn.execute(myStr) 
+
+	 maxvbsname=myrs("vbsname")
+     
+	 myrs.close
+
+  If maxcost <> mincost Then
+	icolor1="yellow"
+	title1="Vendor Costs are not the same"
+	Else
+	icolor1=""
+    title1="All Vendor Costs are the same"
+	End If
+
+  If maxprice <> minprice Then
+	icolor2="yellow"
+	title2="Customer Prices are not the same"
+	Else
+	icolor2=""
+    title2="All Customer Prices are the same"
+	End If
+
+  If minvbsid <> maxvbsid Then
+	icolor3="yellow"
+	title3="Billing Increments are not the same"
+	Else
+	icolor3=""
+    title3="All Billing Increments are the same"
+	End If
+
+    minvrteffectdt=theRs("minvrteffectdt")
+
+	If Year(CDate(minvrteffectdt)) = 5999 Then minvrteffectdt = "--never--" End if
+
+    maxvrteffectdt=theRs("maxvrteffectdt")
+	If Year(CDate(maxvrteffectdt)) = 5999 Then 
+	maxvrteffectdt = "--never--"
+    End If
+    
+  If minvrteffectdt <> maxvrteffectdt Then
+	icolor4vrteff="yellow"
+	title4vrteff="Route Effect Dates are not the same"
+	Else
+	icolor4vrteff=""
+    title4vrteff="All Route Effect Dates are the same"
+	End If
+    
+	max1=""
+	If maxvrteffectdt <> "--never--" Then
+	max1=maxvrteffectdt
+	maxvrteffectdt=displayDate(maxvrteffectdt,11)
+	End if
+
+	minvrtretiredt=theRs("minvrtretiredt")
+
+	If Year(CDate(minvrtretiredt)) = 5999 Then minvrtretiredt = "--never--" End if
+
+    maxvrtretiredt=theRs("maxvrtretiredt")
+	If Year(CDate(maxvrtretiredt)) = 5999 Then
+	maxvrtretiredt = "--never--" 
+	End if
+	
+  If minvrtretiredt <> maxvrtretiredt Then
+	icolor4vrtrt="yellow"
+	title4vrtrt="Route Retire Dates are not the same"
+	Else
+	icolor4vrtrt=""
+    title4vrtrt="All Route Retire Dates are the same"
+	End If
+
+   	If maxvrtretiredt <> "--never--" then
+	maxvrtretiredt=displayDate(maxvrtretiredt,11)
+	End if
+
+    minvrceffectdt=theRs("minvrceffectdt")
+
+	If Year(CDate(minvrceffectdt)) = 5999 Then minvrceffectdt = "--never--" End if
+
+    maxvrceffectdt=theRs("maxvrceffectdt")
+	If Year(CDate(maxvrceffectdt)) = 5999 Then
+	maxvrceffectdt = "--never--" 
+	End if
+	
+	If c = 0 Then
+	
+	If maxvrceffectdt = max1 then
+	minvrceffectdt="--none--"
+    maxvrceffectdt="--none--"
+    End If
+    
+	End If
+	
+
+  If minvrceffectdt <> maxvrceffectdt Then
+	icolor4vrceff="yellow"
+	title4vrceff="Customer Effect Dates are not the same"
+	Else
+	icolor4vrceff=""
+    title4vrceff="All Customer Effect Dates are the same"
+	End If
+    
+	max2=""
+	If (maxvrceffectdt <> "--never--") And (maxvrceffectdt <> "--none--") Then
+   	max2=maxvrceffectdt
+	maxvrceffectdt=displayDate(maxvrceffectdt,11)
+	End if
+
+    minvrcretiredt=theRs("minvrcretiredt")
+
+	If Year(CDate(minvrcretiredt)) = 5999 Then minvrcretiredt = "--never--" End if
+
+    maxvrcretiredt=theRs("maxvrcretiredt")
+	If Year(CDate(maxvrcretiredt)) = 5999 Then
+	maxvrcretiredt = "--never--" 
+	End if
+	
+  If minvrcretiredt <> maxvrcretiredt Then
+	icolor4vrcrt="yellow"
+	title4vrcrt="Customer Retire Dates are not the same"
+	Else
+	icolor4vrcrt=""
+    title4vrcrt="All Customer Retire Dates are the same"
+	End If
+
+   	If maxvrcretiredt <> "--never--" then
+	maxvrcretiredt=displayDate(maxvrcretiredt,11)
+	End if
+
+    
+	s=""
+
+    If  max2 <> "" Then 'vrc
+        s=CStr(dateadd("d", 1, max2))
+	Else
+	   If max1 <> "" then 'vrt
+  	     If c > 0 Then ' number of existed
+           s=CStr(dateadd("d", 1, max1))
+	      Else
+	       s=max1
+
+	     End If
+       End if  
+	End If
+
+    If s <> "" then
+   	newvrceffectdt=displayDate(s,11)
+    Else
+    newvrceffectdt=""
+    End If
+    
+
+    tc=   Dateadd("n", 30,  Now() ) 
+
+    If Minute(tc) <= 30 Then
+                    s3=month(tc)&"/"&day(tc)&"/"&year(tc)&" " & Hour(tc) & ":00"
+    Else
+                    s3=month(tc)&"/"&day(tc)&"/"&year(tc)&" " & Hour(tc) & ":30"
+    End If
+                    
+	s3=displaydate(s3,11)
+		
+	newvrceffectdt=s3
+    
+	'
+
+    If minvrtretiredt = "--never--" Then
+    
+	newvrcretiredt= "--never--" 
+
+    Else
+    
+	newvrcretiredt=displayDate(minvrtretiredt,11)
+
+	End If
+
+    minrsid=theRs("minrsid")
+    maxrsid=theRs("maxrsid")
+
+If (minrsid = maxrsid) And maxrsid = 0 Then
+
+mystr=" select isnull(cRSID,0) as cRSID from X1Customer where id="&x1CustId
+
+set myrs = oConn.execute(myStr) 
+If Not myrs.eof then
+minrsid=myrs("cRSID") ' default for customer
+maxrsid=minrsid
+End if
+myrs.close
+
+
+End If
+
+rowexist = True
+
+cex= ((cpcust>0) Or (cpvend > 0) Or (not rowexist) )
+
+
+sctitle=""
+
+scex=""
+
+If Not rowexist Then
+
+sctitle="Not existed"
+scex="y"
+
+else
+
+If cex Then 
+
+scex="y" 
+
+If cpvend > 0 then
+sctitle="Vendor pending records : " & cpvend
+End If
+
+If cpcust > 0 then
+sctitle=sctitle & "&nbsp;&nbsp;&nbsp;&nbsp;Customer pending records : " & cpcust
+End If
+
+End If ' If cex Then 
+End If ' If Not rowexist Then
+
+If Not cex then
+iact=iact+1
+End if
+
+voipuservendid=thers("vvdid")
+orgdest=theRs("vdsname")
+orgtype=theRs("vdsType")
+
+orgn=orgdest & "  " & orgtype
+
+if (orgc <> orgn) Or (skipc <> skip) then
+   
+   skipc = skip
+
+   orgc=orgn
+
+   DescriptionString = ""
+   DestinationMobileCarrierString = ""
+   DestinationTypeString=""
+   DestinationString=""
+   DialCodesSelectString=""
+
+	
+	If Not(orgdest = "") Then
+		DestinationString = " , @Destination='"&orgdest&"'"
+	End If
+	
+	If Not(orgtype = "") Then
+		DestinationTypeString = " , @DestinationType='"&orgtype&"' "
+	End If
+
+	If Not(DestinationMobileCarrier = "") Then
+		DestinationMobileCarrierString = " , @DestinationMobileCarrier='"&trim(DestinationMobileCarrier)&"' "
+	End If
+
+	
+
+	If Not(Description = "") Then
+		DescriptionString = " , @Description='"&trim(Description)&"' "
+	End If
+
+  
+If Not( DialCodesSelect = "") Then
+   s="''" & Replace(DialCodesSelect,",","'',''") & "''"
+   DialCodesSelectString= " , @DialCodesSelect= " & "'" & s &  "'"
+End If
+
+filt=DestinationString&DestinationTypeString&DestinationMobileCarrierString&DescriptionString&DialCodesSelectString
+
+   
+
+%>
+<tr <%If skipc=1 then%>style="background:#b3c7d2;"<%End if%>><td></td><td></td><td colspan=16><b><%=orgc%></b></td></tr>
+<% End if
+
+ theSQL = "Exec spViewCustomerVendorRatesTmpA2 @tblTempVoIPRateCustomer='" &  tblTempVoIPRateCustomer & "'"
+ theSQL = theSQL &" , @voipUserId='"&voipUserId&"', @TierId='"&TierId&"', @vrUserId = '"&voipuservendid&"' "
+ theSQL = theSQL & filt
+ 	
+    s=theSQL
+    
+	s=Replace(s,"'",":quote:")
+    s=Replace(s,"+",":plus:")
+    
+
+    zlink = siteRoot & "voip/setcustrates1.asp?sql=" & s 
+
+    s= "&org="&org&"&user="&username
+
+    s=Replace(s,"'",":quote:")
+    s=Replace(s,"+",":plus:")
+    
+	s=s&"&tier="&TierId&"&voipuserid="&voipuserid
+    s=s&"&grp="&irec
+    zlink=zlink & s
+  
+    zlinkedit=Replace(zlink,"setcustrates1","setcustrates1edit")
+
+
+%>
+<tr id="rid<%=irec%>" <%If skipc = 0 then%><%If cex then%>style="background:yellow;" title="<%=sctitle%>"<%else%>class=datarow<%=irec mod 2%><%End if%>
+<%else%>style="background:#b3c7d2;"<%End if%>>
+<td><%=irec%></td>
+<td align=center><%If Not cex Then
+
+If KeepTempTable = "" Then
+v=false
+Else
+v= ( rqf("skipgrp") (irec) <> "")
+End If
+If intention = "skipallgrp" then
+v=theRs("skip")
+End if
+%>
+<input type=checkbox class=datacheckboxn  
+name='skipgrp' value='1' <%If v then%> checked <%End if%> onclick="doSubmit('skipgrp','<%=irec%>')">
+<%else%>
+<input type=hidden name='skipgrp' value=''>
+<%End if%>
+</td>
+<td nowrap title="<%="Vendor Username: "&username%>"><%=org%>&nbsp;<%If Not cex then%>:<%=c%>:<%=c1%><%End if%></td>
+<td <%If Not cex then%><%If icolor1 <> "" then%>style="text-align:center;font-size:12;background=<%=icolor1%>;"<%else%>style="text-align:center;font-size:12;"
+<%End if%>  nowrap title="<%=title1%>"<%else%>colspan=8<%End If%>><%If Not cex then%>&nbsp;<%=FormatNumber(maxCost,6)%>
+<%else%><%=sctitle%><%End if%></td>
+  <input type=hidden name="maxPrice" value="<%=maxPrice%>">
+  
+ <input type=hidden name="gvcost" value="<%=maxCost%>">
+ <input type=hidden name="maxcustefdt" value="<%=maxvrceffectdt%>">
+ <input type=hidden name="maxvendefdt" value="<%=maxvrteffectdt%>">
+ <input type=hidden name="maxvendrtdt" value="<%=maxvrtretiredt%>">
+ <input type=hidden name="cex" value="<%=scex%>">
+ <input type=hidden name="grpindex" value="<%=grpindex%>">
+
+<%If Not cex then%>
+ <td <%If Not cex then%><%If icolor3 <> "" then%>style="text-align:center;font-size:12;background=<%=icolor3%>;"<%else%>style="text-align:center;font-size:12;"
+ <%End if%>  nowrap title="<%=title3%>">&nbsp;<%=maxvbsname%><%End if%></td>
+ <%End If ' if not cex
+ %>
+  <td  style="text-align:center;font-size:12;" nowrap id="idtdnp<%=irec%>">
+  <%If Not cex Then%>
+  <!--
+  <input type='text' name=np id="idnp<%=irec%>" readonly size=2>
+  -->
+   <select name="np" id="idnp<%=irec%>" onchange="ValidateGroup('<%=irec%>','')">
+   </select>
+   <%End If ' if not cex
+   %>
+  </td>
+  <td><%If Not cex Then
+  If KeepTempTable = ""  then
+
+	newCustPrice=maxPrice ' + 0.05
+    newCustPriceSave=newCustPrice
+	
+Else
+   
+if intention = "skipallgrp" Then
+
+newCustPrice=thers("cvrcPrice")
+If IsNull(newCustPrice) Then
+
+	newCustPrice=maxPrice ' + 0.05
+    newCustPriceSave=newCustPrice
+
+End If
+
+newCustPriceSave=newCustPrice
+
+Else
+
+	w=rqf("sgrpCnt")
+
+	
+	If w = "" Then w = 0 Else w=CInt(w) End If
+	If w = irec Or (intention="addallgrpsave")  Then 
+	
+	'newCustPrice=maxPrice ' + 0.05
+  
+	newCustPrice=rqf("newCustPrice")(irec)
+    newCustPriceSave=newCustPrice
+    
+	Else
+	
+
+    newCustPrice=rqf("newCustPrice")(irec)
+    newCustPriceSave=rqf("newCustPriceSave")(irec)
+
+	
+    End if 
+    
+End If
+
+End If
+
+  %>
+  <input type='text' name='newCustPrice' style="font-size:11;text-align:center;"  size=5
+   value='<%= FormatNumberC(newCustPrice,6)%>' onBlur="ValidateGroup('<%=irec%>','')"/><%else%><input type=hidden name='newCustPrice' value='0'>
+<%End if%>
+ <input type='hidden' name='newCustPriceSave' value='<%= FormatNumberC(newCustPriceSave,6) %>' />        
+ </td>
+   <td>
+<%
+If KeepTempTable = "" then
+
+v=maxvbsid
+vname=maxvbsname
+v1=0
+If c = 0 Then
+s="select xc.defaultbillingincrement from tblvoipusercustomer uc join x1customer xc on xc.id=uc.x1custid where uc.id="&voipuserid
+Set rstest=oconn.execute(s)
+If Not rstest.eof then
+v1=rstest("defaultbillingincrement")
+If IsNull(v1) Then v1 = 0 End if
+End if
+rstest.close
+End If ' c = 0
+If v1 > v Then 
+v = v1 
+
+mystr=" select cast(vbsInitialMinSecsPerCall as varchar) +'/' +cast(vbsIncrements as varchar) vbsName from tblVoIPBillingStructure"
+mystr=mystr & " where vbsid="& v
+set myrs = oConn.execute(myStr) 
+vname=myrs("vbsname")
+myrs.close
+
+End If
+
+newvbsIdTextSave=vname
+newvbsIdSave=v
+
+Else
+
+if intention = "skipallgrp" Then
+
+v=thers("cvbsid")
+
+If IsNull(v) Then
+
+v=maxvbsid
+vname=maxvbsname
+v1=0
+If c = 0 Then
+s="select xc.defaultbillingincrement from tblvoipusercustomer uc join x1customer xc on xc.id=uc.x1custid where uc.id="&voipuserid
+Set rstest=oconn.execute(s)
+If Not rstest.eof then
+v1=rstest("defaultbillingincrement")
+If IsNull(v1) Then v1 = 0 End if
+End if
+rstest.close
+End If ' c = 0
+
+If v1 > v Then 
+v = v1 
+End If
+
+End If ' isnull(v)
+
+mystr=" select cast(vbsInitialMinSecsPerCall as varchar) +'/' +cast(vbsIncrements as varchar) vbsName from tblVoIPBillingStructure"
+mystr=mystr & " where vbsid="& v
+set myrs = oConn.execute(myStr) 
+vname=myrs("vbsname")
+myrs.close
+
+
+newvbsIdTextSave=vname
+newvbsIdSave=v
+
+Else
+
+	w=rqf("sgrpCnt")
+	If w = "" Then w = 0 Else w=CInt(w) End if
+	If w = irec Or (intention="addallgrpsave")  Then 
+	
+	  v = rqf("newvbsId") ( irec ) 
+      
+	  newvbsIdSave=v
+	  
+	  If v <> "" Then
+	  
+	  mystr=" select cast(vbsInitialMinSecsPerCall as varchar) +'/' +cast(vbsIncrements as varchar) vbsName from tblVoIPBillingStructure"
+      mystr=mystr & " where vbsid="& v
+      set myrs = oConn.execute(myStr) 
+      vname=myrs("vbsname")
+      myrs.close
+
+      newvbsIdTextSave=vname
+      
+	  End If
+      
+    Else
+	v = rqf("newvbsId") ( irec ) 
+    newvbsIdSave=rqf("newvbsIdSave") ( irec )
+	newvbsIdTextSave=rqf("newvbsIdTextSave") ( irec )
+    End if 
+
+End If
+
+End if
+
+%>
+<%If Not cex then%>
+<select class=dataselect name=newvbsId onBlur="ValidateGroup('<%=irec%>','')" >
+<option value='0'>--All--</option><%
+set rstest=oConn.execute("select vbsId, cast(vbsInitialMinSecsPerCall as varchar) +'/' +cast(vbsIncrements as varchar) vbsName from tblVoIPBillingStructure")
+while not rstest.eof%>
+<option  value='<%=rstest("vbsId")%>' 
+<%=selected(rstest("vbsId"),v)%>><%=shortStr(rstest("vbsName"),12)%></option>
+<%rstest.movenext
+Wend
+rstest.close%>
+</select>
+<%else%>
+<input type=hidden name=newvbsId value='0'>
+<%End if%>
+<input type='hidden' name='newvbsIdSave' value='<%= newvbsIdSave %>' />        
+<input type='hidden' name='newvbsIdTextSave' value='<%= newvbsIdTextSave %>' />        
+</td>
+<td><%If Not cex Then
+
+If KeepTempTable = ""  then
+
+newGrpEffDt=newvrceffectdt
+newGrpEffDtSave=newGrpEffDt
+
+  
+Else
+
+if intention = "skipallgrp" Then
+
+newGrpEffDt=thers("cvrcEffectDt")
+
+If IsNull(newGrpEffDt) Then
+
+newGrpEffDt=newvrceffectdt
+
+Else
+
+newGrpEffDt=displayDate(newGrpEffDt,11)
+
+End If
+
+newGrpEffDtSave=newGrpEffDt
+
+Else
+	
+	
+	w=rqf("sgrpCnt")
+	If w = "" Then w = 0 Else w=CInt(w) End if
+	If (w = irec) Or (intention="addallgrpsave")  Then 
+
+    newGrpEffDt = rqf("newGrpEffectDt") ( irec ) 
+    newGrpEffDtSave=newGrpEffDt
+
+    Else
+	newGrpEffDt = rqf("newGrpEffectDt") ( irec ) 
+    newGrpEffDtSave=rqf("newGrpEffectDtSave") (irec)
+
+    End if 
+End if
+End If
+%>
+<input type='text' name='newGrpEffectDt' style="font-size:11;text-align:center" 
+ value="<%=newGrpEffDt%>" onBlur="ValidateGroup('<%=irec%>','')"/>
+<%else%>
+<input type=hidden name='newGrpEffectDt' value=''>
+<%End if%>
+<input type='hidden' name='newGrpEffectDtSave' value='<%= newGrpEffDtSave %>' />        
+</td>
+<td><%If Not cex Then
+If KeepTempTable = ""  then
+newGrpRetDt=newvrcretiredt
+newGrpRetDtSave=newGrpRetDt
+Else
+
+if intention = "skipallgrp" Then
+
+newGrpRetDt=thers("cvrcRetireDt")
+
+if IsNull(newGrpRetDt) Then
+
+newGrpRetDt=newvrcretiredt
+
+Else
+If Year(newGrpRetDt) = 5999 then
+newGrpRetDt="--never--"
+Else
+newGrpRetDt=displayDate(newGrpRetDt,11)
+End If
+
+End If
+
+newGrpRetDtSave=newGrpRetDt
+
+Else
+
+    w=rqf("sgrpCnt")
+	If w = "" Then w = 0 Else w=CInt(w) End if
+	If w = irec Or (intention="addallgrpsave") Then 
+	'newGrpRetDt=newvrcretiredt
+	newGrpRetDt = rqf("newGrpRetireDt") ( irec ) 
+    newGrpRetDtSave=newGrpRetDt
+    Else
+	newGrpRetDt = rqf("newGrpRetireDt") ( irec ) 
+    newGrpRetDtSave=rqf("newGrpRetireDtSave") (irec)
+    End if 
+End if
+End if
+%>
+<input type='text' name='newGrpRetireDt' style="font-size:11;text-align:center" size=8
+ value="<%=newGrpRetDt%>" onBlur="ValidateGroup('<%=irec%>','')"/>
+<%else%>
+<input type='hidden' name='newGrpRetireDt' value=''>
+<%End if%>
+<input type='hidden' name='newGrpRetireDtSave' value='<%= newGrpRetDtSave %>' />        
+</td>
+<%If Not cex Then%>
+<td  style="text-align:center;font-size:13;color:0000aa;">
+<%
+If Not cex Then
+
+If minrsid <> maxrsid Then
+	icolor5rsid="yellow"
+	title5rsid="Customer RSID are not the same"
+	Else
+	icolor5rsid="white"
+    title5rsid="All Customer RSID are the same"
+End If
+
+u=0
+
+
+If KeepTempTable = ""  Then
+
+v=0
+
+If minrsid = maxrsid then
+   v=maxrsid
+End If
+
+newrsIdSave=v
+
+Else
+
+ 
+if intention = "skipallgrp" Then
+
+v=thers("crsid")
+
+If IsNull(v) Then
+   v=0
+If minrsid = maxrsid then
+   v=maxrsid
+End If
+
+End If
+
+newrsIdSave=v
+
+Else 
+
+
+	w=rqf("sgrpCnt")
+
+	If w = "" Then w = 0 Else w=CInt(w) End if
+	If (w = irec) Or (intention="addallgrpsave")  Then 
+
+    v = rqf("newrsId") ( irec ) 
+    newrsIdSave=v
+
+    Else
+	v = rqf("newrsId") ( irec ) 
+    newrsIdSave=rqf("newrsIdSave") (irec)
+    End if 
+
+End If ' intention = "skipallgrp"
+
+
+End If ' KeepTempTable=""
+
+newrsIdColor=icolor5rsId
+
+If newrsIdSave <> v Then
+
+newrsIdColor="#eedede"
+
+
+End If
+
+
+%>
+<select class=dataselect name=newrsId  
+<%If Not bAllowRSID then%> title="You are not allowed to set up RSID" disabled <%else%> title="<%=title5rsid%>" <%End if%> 
+onBlur="ValidateGroup('<%=irec%>','')" style="background-color:<%=newrsIdColor%>;" 
+>
+<option value = '0'  <%=selected(u,v)%> >-Select-</option>
+
+<%
+
+mystr = "SELECT c.ID, c.RSID, t.userFN +' '+ t.userLN as "
+mystr = mystr & " UserName , c.CommType, c.Rate FROM  Commissions AS c INNER JOIN SalesPerson "
+mystr = mystr & " AS s ON c.SPID = s.SPID INNER JOIN tblUser AS t ON s.userId = t.userId "
+
+If sqlinherit <> "" Then
+mystr = mystr & " where t.userunixname='"&syslabuser&"'"
+End If
+
+mystr = mystr &  " order by  c.RSID"
+
+
+TempRSID=""
+
+set rstest=oConn.execute(mystr)
+
+keygrp=0
+i=0
+while not rstest.eof
+key=rstest("RSID")
+begingrp=false
+If key <> keygrp Then
+i=i+1
+keygrp=key
+begingrp=true
+End If
+
+If rstest("CommType")="Percentage" Then
+             rTempRate=CDbl(rstest("Rate"))*100
+             Field=cstr(rTempRate)&"%"
+  End If
+ If rstest("CommType")="Fixed" Then
+             Field="$"&rstest("Rate")
+    End If
+   If key=tempRSID Then
+            Field= spacesHtml(2*Len(key)+1) & rstest("UserName")&" "&Field
+    Else
+            tempRSID=key
+            Field=key&"&nbsp;"&rstest("UserName")&" "&Field
+   End If
+           
+if Not bShowRSID Then
+Field=" Hidden "
+End if
+
+		   %>
+ <option   value = '<%=TempRSID%>' <%If begingrp then%><%=selected(tempRSID,v)%><%End if%>><%=Field%></option>
+<%
+rstest.movenext
+Wend
+rstest.close
+%>
+</select>
+<%else%>
+<input type='hidden' name='newrsId'  value='0'>
+<%End if%>
+<input type='hidden' name='newrsIdSave' value='<%= newrsIdSave %>' />   
+<input type='hidden' name='newrsIdColor' value='<%= icolor5rsId %>' />   
+
+</td>
+<%
+End If ' if not cex
+%>
+
+<%If Not cex Then%>
+<td  style="text-align:center;font-size:13;color:0000aa;">
+<%If Not cex Then
+%>
+<input class=databutton type='button' value='Apply' 
+onclick="return doApplyCustGroup1('<%=irec%>');"
+/><%End if%>
+</td>
+<%
+End If ' if not cex
+%>
+<td  style="text-align:center;font-size:13;color:0000aa;" nowrap>
+<%If Not cex then%>
+<a href="/z.asp" onclick="return acctWin1(this,'<%=zLink%>',1000,650,50,10);">Show</a>/
+<a href="/z.asp" onclick="return acctWin1(this,'<%=zLinkedit%>',1000,650,50,10);">Edit</a>
+
+<%End if%>
+</td>
+<%If Not cex then%>
+ <td <%If Not cex then%><%If icolor2 <> "" then%>style="text-align:center;font-size:12;background=<%=icolor2%>;"<%else%>style="text-align:center;font-size:12;"
+ <%End if%>  nowrap title="<%=title2%>"<%End if%>><%If Not cex then%>&nbsp;<%=FormatNumber(maxPrice,6)%><%End if%></td>
+ <td <%If Not cex then%><%If icolor4vrteff <> "" then%>style="text-align:center;font-size:12;background=<%=icolor4vrteff%>;"<%else%>style="text-align:center;font-size:12;"
+ <%End if%>  nowrap title="<%=title4vrteff%>"<%End if%>><%If Not cex then%>&nbsp;<%=maxvrteffectdt%><%End if%></td>
+ <td <%If Not cex then%><%If icolor4vrtrt <> "" then%>style="text-align:center;font-size:12;background=<%=icolor4vrtrt%>;"<%else%>style="text-align:center;font-size:12;"
+ <%End if%>  nowrap title="<%=title4vrtrt%>"<%End if%>><%If Not cex then%>&nbsp;<%=maxvrtretiredt%><%End if%></td>
+ <td <%If Not cex then%><%If icolor4vrceff <> "" then%>style="text-align:center;font-size:12;background=<%=icolor4vrceff%>;"<%else%>style="text-align:center;font-size:12;"
+ <%End if%>  nowrap title="<%=title4vrceff%>"<%End if%>><%If Not cex then%>&nbsp;<%=maxvrceffectdt%><%End if%></td>
+ <td <%If Not cex then%><%If icolor4vrcrt <> "" then%>style="text-align:center;font-size:12;background=<%=icolor4vrcrt%>;"<%else%>style="text-align:center;font-size:12;"
+ <%End if%>  nowrap title="<%=title4vrcrt%>"<%End if%>><%If Not cex then%>&nbsp;<%=maxvrcretiredt%><%End if%></td>
+<%End If ' If Not cex 
+%>
+
+</tr>
+<%
+thers.movenext
+Wend
+thers.close
+If iact > 0 then
+%>
+             
+<tr bgcolor='eeeeee'><td></td><td colspan='1' >
+                       <input class=databutton type='button' value='Sort' 
+					   onclick="return doSubmit('skipallgrp','')"
+					    />
+					</td><td colspan=8 style=text-align:right>
+					   <input id='fSave' class=databutton type='button' value='      Save      ' 
+					   onclick="return doSubCust(<%=irec%>);"
+					    />
+					   <input class=databutton type='button' value='      Cancel      ' 
+					   onclick="return doSubmit('transcancel','');"
+					    /></td><td>
+                        <input class=databutton type='button' value='Apply All ' 
+					   onclick="return doApplyAll(<%=irec%>);"
+					    /></td><td colspan=6>
+					  
+						</td></tr> 
+ </table>
+
+<input type=hidden name='numrec' id='idnumrec' value="<%=irec%>">
+
+ <%
+ workgroupCnt=irec
+End If ' iact > 0
+End If ' if not NoMatchingVendors then>
+End If ' voipuserid > 0 And Tierid > 0 
+ %>
+  <br>
+ </form>
+
+<%
+If custRateResult <> "" Then 
+%>
+
+</td></tr>
+<tr><td>
+
+<%
+
+             dim  myNCustRs
+			 
+             sql = "select count(*) as nrec, rc.voipuserid, xc.organization, uc.username " 
+			 sql = sql & " from tblVoIPRateCustomer rc " 
+		     sql = sql & " join tblvoipusercustomer uc on uc.id=rc.voipuserid "
+             sql = sql & " join x1customer xc on xc.id=uc.x1custid "
+       	     sql = sql & " where rc.vrcId in ( "
+			 sql = sql & " select byte4  from " & tblTempRateLog & " where address = 'custretired' ) or vrcId in ( "
+			 sql = sql & " select byte1 from " & tblTempRateLog & " where address = 'newcustomer' ) "
+			 sql = sql & " group by rc.VoipUserId, xc.organization, uc.username "
+             sql =  sql & " order by xc.organization, uc.username"
+
+			 set myNCustRs = oConn.execute(sql) 
+             
+             %>
+		
+             <br><br><font style=text-align:center;font-size:15;color:007700;><b><u>Updated Customer Rate(s)</u></b></font>
+             
+                  
+             <form name='frmCustBk' action='' method='post'>
+			 <table align=left>
+			 <tr>
+			 <th>&nbsp</th>
+			 <th>Customer</th>
+             <th>User</th>
+             <th>Retired Records</th>
+             <th>New Records</th>
+
+			 </tr>
+		
+             <% 
+			       groupCnt=0
+
+                   zlink = siteRoot & "voip/showcustprices.asp?"
+                   
+				 while (not myNCustRs.EOF) 
+         
+                   groupCnt=groupCnt+1
+                   cuid=myNCustRs("voipUserId").Value
+				   nrec=myNCustRs("nrec").Value
+
+        s=myNCustRs("Organization") 
+		s1=myNCustRs("Username")
+ 
+	%>
+
+
+           <tr class=datarow<%=groupCnt Mod 2%>>
+		   <td><%=groupCnt%></td>
+		   <td><%=s%>:<%=nrec%></td>
+           <td><%=s1%></td>
+           <td>	<a href="/z.asp" onclick="return acctWin1(this,'<%=zLink&"sid="&cuid&"&type=retired"%>',900,650,50,10)">Show Details</a></td>
+           <td>	<a href="/z.asp" onclick="return acctWin1(this,'<%=zLink&"sid="&cuid&"&type=new"%>',900,650,50,10)">Show Details</a></td>
+		   </tr>
+		 <%
+          
+             myNCustRs.MoveNext
+             wend    
+            myNCustRs.Close
+          %>
+             	</table>
+				</td></tr>
+
+<tr><td>
+
+
+				<table><tr>
+				<%
+	zLink = siteRoot &"voip/treport2.asp?doc=2"
+	%>
+	<td  valign="bottom" align=center nowrap><a href="/z.asp" 	onclick="return acctWin(this,'<%=zLink%>')">Check Last Transaction</a></td>
+</tr></table>
+</td></tr>
+<tr><td>
+
+				</form>
+<% 
+            end if
+%>
+<br>
+
+<form name=fSubmit action='' method='post'>
+	<input type=hidden name="sX1CustId" id="sX1CustId" value="">
+	<input type=hidden name="sVoipUserId" id="sVoipUserId" value="">
+    <input type=hidden name="sVoipUserName"  value="">
+	<input type=hidden name="sDestination" id="sDestination" value="">
+	<input type=hidden name="sDestinationType" id="sDestinationType" value="">
+	<input type=hidden name="sDestinationMobileCarrier" id="sDestinationMobileCarrier" value="">
+	<input type=hidden name="sDescription" id="sDescription" value="">
+	
+	<input type=hidden name="sTierId" id="sTierId" value="<%=TierId%>">
+
+	<input type=hidden name="sStatusId" id="sStatusId" value="">
+	<input type=hidden name="sListDate1" id="sListDate1" value="">
+	<input type=hidden name="sListDate2" id="sListDate2" value="">
+	<input type=hidden name="sListVendorId" id="sListVendorId" value="">
+	<input type=hidden name="sAddVendorId" id="sAddVendorId" value="">
+	<input type=hidden name="sVbsId" id="sVbsId" value="">
+	<input type=hidden name="sIntention" value="">
+	<input type=hidden name="sql" value="">
+    <input type=hidden name="filt" value="">
+	<input type=hidden name="sgrpCnt" value="">
+    <input type=hidden name="sallgrpCnt" value="">
+	<input type=hidden name="snprice" value="">
+	<input type=hidden name="snvbsid" value="">
+	<input type=hidden name="snrtdt" value="">
+    <input type=hidden name="snefdt" value="">
+    <input type=hidden name="snrsid" value="">
+    <input type=hidden name="sKeepTempTable" value="">
+	<input type=hidden name="DstPattern" id=idDstPattern value="<%=DialCodesSelect%>">
+	<input type=hidden name="LabelDialCode"  value="<%=LabelDialCode%>">
+    <input type=hidden name="min1Value" value="">
+    <input type=hidden name="min2Value" value="">
+    <input type=hidden name="vrcRetireDt" value="">
+    <input type=hidden name="vvdid" value="<%=vvdid%>">
+	<input type=hidden name="orgdest" value="<%=orgdest%>">
+    <input type=hidden name="orgtype" value="<%=orgtype%>">
+	<input type=hidden name="numgrp" value="<%=irec%>"> 
+
+	<input type=hidden name="CheckNewPrice2copy" value=""> 
+	<input type=hidden name="newCustPrice2copy" value=""> 
+	<input type=hidden name="newBi2copy" value=""> 
+	<input type=hidden name="newEffectDt2copy" value=""> 
+	<input type=hidden name="newRetireDt2copy" value=""> 
+    <input type=hidden name="vvdidlist" value="" />
+  <input type=hidden name="lastdroplist" value="" />
+ <input type=hidden name="spartition" value=""<%=mpartition%>" />
+
+<%
+For i=1 To irec
+
+%>
+    <input type=hidden name="newCustPrice" value="">
+    <input type=hidden name="newvbsId" value="">
+    <input type=hidden name="newGrpEffectDt" value="">
+    <input type=hidden name="newGrpRetireDt" value="">
+    <input type=hidden name="newCustPriceSave" value="" />        
+    <input type=hidden name="newvbsIdSave" value="" />  
+    <input type=hidden name="newvbsIdTextSave" value="" />        
+    <input type=hidden name="newGrpRetireDtSave" value="" />        
+    <input type=hidden name="newGrpEffectDtSave" value="" />   
+    <input type=hidden name="newrsId" value="" />   
+    <input type=hidden name="newrsIdSave" value="" />  
+	<input type=hidden name="newrsIdColor" value="" />  
+	<input type=hidden name="skipgrp" value="" />
+    <input type=hidden name="grpindex" value="" />
+	<% 
+	v=""
+	
+	If intention = "addgrpsave" Or intention="addnewrate" Or intention="addallgrpsave" Or intention="skipallgrp" then
+
+	on error resume next 
+	v=rqf("nnnp") (i)
+    on error goTo 0 
+	End If
+	
+	%>
+    <input type=hidden name="nnnp"  value="<%=v%>" />        
+    
+<%
+Next
+
+If irecsgrp = "" Then irecsgrp=0 End if
+
+For i=1 To irecsgrp
+v=""
+If intention = "retiresupergrp" then
+v=rqf("grpretirementdata") (i)
+End if
+%>
+<input type=hidden name="grpretirementdata" value="<%=v%>" />
+<%
+next
+%>
+
+	<input type=hidden name="numsgrp" value="<%=irecsgrp%>"> 
+
+	<input type=hidden name="doretire" value="<%=doretire%>">
+	  	   	
+
+</form>
+
+<%
+
+Function FormatNumberC(value,n)
+Dim r
+
+If IsNumeric(value) Then
+r=FormatNumber(value,n)
+Else
+r=value
+End If
+FormatNumberC=r
+End Function
+
+%>
+
+
+ <script type='text/javascript' src='voiCustomerRates.js'></script>
+          
+<%
+if workgroupCnt > 0 Then
+                 
+				For i=1 To workgroupCnt
+				s="<script>ValidateGroup(" & i & ",''); </script>"
+				Response.write s
+			
+				Next
+End if				
+
+%>
+
+
+<!--#include file=../include/footer.asp-->
+
